@@ -4,7 +4,7 @@ Andrew Howard, Mark Sandler, Grace Chu, Liang-Chieh Chen, Bo Chen, Mingxing Tan,
 Searching for MobileNetV3
 arXiv preprint arXiv:1905.02244.
 """
-
+import torch
 import torch.nn as nn
 import math
 
@@ -166,7 +166,7 @@ class MobileNetV3(nn.Module):
         # setting of inverted residual blocks
         self.cfgs = cfgs
         self.split_position=split_position
-        self.bottleneck = nn.Identity()
+        #self.bottleneck = nn.Identity()
         assert mode in ['large', 'small']
 
         # building first layer
@@ -177,8 +177,9 @@ class MobileNetV3(nn.Module):
         for layer_num, (k, t, c, use_se, use_hs, s) in enumerate(self.cfgs):
             output_channel = _make_divisible(c * width_mult, 8)
             exp_size = _make_divisible(input_channel * t, 8)
-            if layer_num == self.split_position:
-                self.bottleneck = Bottleneck(input_channel, bottleneck_channels)
+            # if layer_num == self.split_position:
+            #     #self.bottleneck = Bottleneck(input_channel, bottleneck_channels)
+            #     layers.append(Bottleneck(input_channel, bottleneck_channels))
             layers.append(block(input_channel, exp_size, output_channel, k, s, use_se, use_hs))
             input_channel = output_channel
         self.features = nn.Sequential(*layers)
@@ -197,11 +198,11 @@ class MobileNetV3(nn.Module):
         self._initialize_weights()
 
     def forward(self, x):
-        for index, l in enumerate(self.features):
-            if index == self.split_position:
-                x = self.bottleneck(x)
-            x = l(x)
-
+        # for index, l in enumerate(self.features):
+        #     # if index == self.split_position:
+        #     #     x = self.bottleneck(x)
+        #     x = l(x)
+        x = self.features(x)
         x = self.conv(x)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -269,3 +270,51 @@ def mobilenetv3_small(**kwargs):
 
     return MobileNetV3(cfgs, mode='small', **kwargs)
 
+
+
+class SplitMobileNetV3(nn.Module):
+    def __init__(self, pretrained=False, split_position=-1, bottleneck_channels=-1, **kwargs) -> None:
+        super(SplitMobileNetV3,self).__init__()
+        model = mobilenetv3_large(**kwargs)
+        if pretrained:
+            state_dict = torch.load('mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
+            state_dict.pop("classifier.3.weight")
+            state_dict.pop("classifier.3.bias")
+            model.load_state_dict(state_dict, strict=False)
+        
+        # Make MobileNet splitable using ordered layers structure (for FI purposes)
+        
+        if split_position>0:
+            # Catch the first layers 
+            head=nn.Sequential(*list(model.features.children())[:split_position])
+            # insert the bottleneck layers
+            self.channels=[]
+            self.check_channels(list(model.features.children())[split_position])
+            bottleneck=Bottleneck(self.channels[0], bottleneck_channels)
+            # Capture the subsequent layers
+            tail=nn.Sequential(*list(model.features.children())[split_position:-1])        
+            layers=[head,bottleneck,tail]
+            # create the features model
+            self.features=nn.Sequential(*list(layers))
+        else:
+            self.features=model.features
+            
+        self.conv = model.conv
+        self.avgpool = model.avgpool
+        self.classifier = model.classifier 
+
+
+    def check_channels(self,model:nn.Module):        
+        for name, module in model.named_children():
+            if len(list(module.children())) > 0:
+                self.check_channels(module)               
+            if isinstance(module,nn.Conv2d):
+                self.channels.append(module.in_channels)             
+        
+    def forward(self, x):
+        x = self.features(x)
+        x = self.conv(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x

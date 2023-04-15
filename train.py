@@ -132,12 +132,7 @@ def main():
     print(config)
     split_position = config.get('split_position', -1)
     bottleneck_channels = config.get('bottleneck_channels', -1)
-    model = mobilenetv3.mobilenetv3_large(num_classes=10, split_position=split_position, bottleneck_channels=bottleneck_channels)
-    if args.pretrained:
-        state_dict = torch.load('mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
-        state_dict.pop("classifier.3.weight")
-        state_dict.pop("classifier.3.bias")
-        model.load_state_dict(state_dict, strict=False)
+    model = mobilenetv3.SplitMobileNetV3(num_classes=10, pretrained=args.pretrained, split_position=split_position, bottleneck_channels=bottleneck_channels)
 
     if not args.distributed:
         model = torch.nn.DataParallel(model).cuda()
@@ -182,7 +177,6 @@ def main():
     val_dataset = datasets.STL10(root="./data/stl10", transform=get_transforms(split='test'),
                                  download=True, split="test")
 
-    config['holdout_labels'] = train_dataset.holdout_labels
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,
                                                shuffle=True, num_workers=args.workers)
