@@ -155,8 +155,8 @@ def main():
     args = parser.parse_args()
     with open(args.config) as f:
         config = yaml.full_load(f)
-
-    setup_log_file(os.path.expanduser("log/log.log"))
+    layer_num=conf_fault_dict=config['fault_info']['weights']['layer'][0]
+    setup_log_file(os.path.expanduser(f"log/log_layer_{layer_num}.log"))
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -256,11 +256,11 @@ def main():
 
     # 2. Run a fault free scenario to generate the golden model
     FI_setup.open_golden_results("Golden_results")
-    validate(val_loader, val_loader_len, model, criterion, fsim_enabled=True, Fsim_setup=FI_setup)
+    train_loss, train_acc = validate(val_loader, val_loader_len, model, criterion, fsim_enabled=True, Fsim_setup=FI_setup)
     FI_setup.close_golden_results()
 
 
-    
+    writer = SummaryWriter(os.path.join(args.checkpoint, 'logs'))
     # 3. Prepare the Model for fault injections
     FI_setup.FI_framework.create_fault_injection_model(torch.device('cuda'),model,
                                         batch_size=1,
@@ -271,7 +271,7 @@ def main():
     logging.getLogger('pytorchfi').disabled = True
     FI_setup.generate_fault_list(flist_mode='sbfm',f_list_file='fault_list.csv',layer=conf_fault_dict['layer'][0])    
     FI_setup.load_check_point()
-
+    
     # 5. Execute the fault injection campaign
     for fault,k in FI_setup.iter_fault_list():
         # 5.1 inject the fault in the model
@@ -279,7 +279,9 @@ def main():
         FI_setup.open_faulty_results(f"F_{k}_results")
         try:   
             # 5.2 run the inference with the faulty model 
-            validate(val_loader, val_loader_len, FI_setup.FI_framework.faulty_model, criterion, fsim_enabled=True, Fsim_setup=FI_setup)
+            val_loss, prec1 = validate(val_loader, val_loader_len, FI_setup.FI_framework.faulty_model, criterion, fsim_enabled=True, Fsim_setup=FI_setup)
+            writer.add_scalars('loss', {'train loss': train_loss, 'validation loss': val_loss}, k)
+            writer.add_scalars('accuracy', {'train accuracy': train_acc, 'validation accuracy': prec1}, k)
         except Exception as Error:
             msg=f"Exception error: {Error}"
             logger.info(msg)
@@ -287,7 +289,7 @@ def main():
         FI_setup.close_faulty_results()
         FI_setup.parse_results()
         FI_setup.write_reports()
-
+    writer.close()
     ########################################################################################
 
     # if args.evaluate:
