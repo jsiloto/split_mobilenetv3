@@ -86,21 +86,17 @@ parser.add_argument('--weight', default='', type=str, metavar='WEIGHT',
 best_prec1 = 0
 
 
-def get_transforms(split='train', input_size=(128, 128)):
+def get_transforms(split='train', input_size=(96, 96)):
 
     if split == 'train':
         transform = transforms.Compose([
             transforms.ToTensor(),
-            # transforms.Resize(input_size),
             transforms.RandomRotation(degrees=(-20,20)),
-            # transforms.ColorJitter(brightness=.4, hue=.25),
             transforms.RandomResizedCrop(input_size),
             transforms.RandomHorizontalFlip(),
         ])
     elif split == 'test':
         transform = transforms.Compose([
-            # you can add other transformations in this list
-            # transforms.Resize(input_size),
             transforms.ToTensor()
         ])
     return transform
