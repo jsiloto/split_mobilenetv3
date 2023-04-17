@@ -26,6 +26,28 @@ from mobilenetv3 import mobilenetv3
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 from tensorboardX import SummaryWriter
 
+import pytorchfi
+from pytorchfi import core
+from pytorchfi import neuron_error_models
+from pytorchfi import weight_error_models
+
+from pytorchfi.core import FaultInjection
+
+from pytorchfi.FI_Weights import FI_report_classifier
+from pytorchfi.FI_Weights import FI_framework
+from pytorchfi.FI_Weights import FI_manager 
+from pytorchfi.FI_Weights import DatasetSampling 
+
+# comment this line, otherwise the fault injections will collapse due to leaking memory produced by 'file_system
+#torch.multiprocessing.set_sharing_strategy('file_system')
+import logging
+from logging import FileHandler, Formatter
+
+import os
+import pickle
+import sys
+from pathlib import Path
+
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--config', required=True, help='yaml file path')
 parser.add_argument('-d', '--data', metavar='DIR',
@@ -86,6 +108,28 @@ parser.add_argument('--weight', default='', type=str, metavar='WEIGHT',
 best_prec1 = 0
 
 
+
+LOGGING_FORMAT = '%(asctime)s\t%(levelname)s\t%(name)s\t%(message)s'
+
+logging.basicConfig(
+    format=LOGGING_FORMAT,
+    datefmt='%Y/%m/%d %H:%M:%S',
+    level=logging.INFO,
+)
+def_logger = logging.getLogger()
+
+logger = def_logger.getChild(__name__)
+
+
+def make_parent_dirs(file_path):
+    Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+
+def setup_log_file(log_file_path):
+    make_parent_dirs(log_file_path)
+    fh = FileHandler(filename=log_file_path, mode='w')
+    fh.setFormatter(Formatter(LOGGING_FORMAT))
+    def_logger.addHandler(fh)
+
 def get_transforms(split='train', input_size=(128, 128)):
 
     if split == 'train':
@@ -111,6 +155,8 @@ def main():
     args = parser.parse_args()
     with open(args.config) as f:
         config = yaml.full_load(f)
+    layer_num=conf_fault_dict=config['fault_info']['weights']['layer'][0]
+    setup_log_file(os.path.expanduser(f"log/log_layer_{layer_num}.log"))
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -171,7 +217,15 @@ def main():
         logger.set_names(['Epoch', 'Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
     ############################ Datasets ########################################
-    cudnn.benchmark = True
+    cudnn.enabled=True
+    # cudnn.benchmark = True
+    cudnn.deterministic = True
+    # The flag below controls whether to allow TF32 on matmul. This flag defaults to False
+    # in PyTorch 1.12 and later.
+    torch.backends.cuda.matmul.allow_tf32 = True
+    # The flag below controls whether to allow TF32 on cuDNN. This flag defaults to True.
+    cudnn.allow_tf32 = True
+
     train_dataset = datasets.STL10(root="./data/stl10", transform=get_transforms(split='train'),
                                    download=True, split="train")
     val_dataset = datasets.STL10(root="./data/stl10", transform=get_transforms(split='test'),
@@ -181,131 +235,75 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size,
                                                shuffle=True, num_workers=args.workers)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size,
-                                             shuffle=True, num_workers=args.workers)
+                                             shuffle=False, num_workers=args.workers)
 
     train_loader_len = ceil(len(train_dataset)/args.batch_size)
     val_loader_len = ceil(len(val_dataset)/args.batch_size)
 
+
+
+    name_config=((args.config.split('/'))[-1]).replace(".yaml","")
+    conf_fault_dict=config['fault_info']['weights']
+    name_config=f"FSIM_logs/{name_config}_weights_{conf_fault_dict['layer'][0]}"
+
+    cwd=os.getcwd() 
+    model.eval() 
+    print(model)
+    # student_model.deactivate_analysis()
+    full_log_path=os.path.join(cwd,name_config)
+    # 1. create the fault injection setup
+    FI_setup=FI_manager(full_log_path,"ckpt_FI.json","fsim_report.csv")
+
+    # 2. Run a fault free scenario to generate the golden model
+    FI_setup.open_golden_results("Golden_results")
+    train_loss, train_acc = validate(val_loader, val_loader_len, model, criterion, fsim_enabled=True, Fsim_setup=FI_setup)
+    FI_setup.close_golden_results()
+
+
+    writer = SummaryWriter(os.path.join(args.checkpoint, 'logs'))
+    # 3. Prepare the Model for fault injections
+    FI_setup.FI_framework.create_fault_injection_model(torch.device('cuda'),model,
+                                        batch_size=1,
+                                        input_shape=[3,96,96],
+                                        layer_types=[torch.nn.Conv2d,torch.nn.Linear])
+    
+    # 4. generate the fault list
+    logging.getLogger('pytorchfi').disabled = True
+    FI_setup.generate_fault_list(flist_mode='sbfm',f_list_file='fault_list.csv',layer=conf_fault_dict['layer'][0])    
+    FI_setup.load_check_point()
+    
+    # 5. Execute the fault injection campaign
+    for fault,k in FI_setup.iter_fault_list():
+        # 5.1 inject the fault in the model
+        FI_setup.FI_framework.bit_flip_weight_inj(fault)
+        FI_setup.open_faulty_results(f"F_{k}_results")
+        try:   
+            # 5.2 run the inference with the faulty model 
+            val_loss, prec1 = validate(val_loader, val_loader_len, FI_setup.FI_framework.faulty_model, criterion, fsim_enabled=True, Fsim_setup=FI_setup)
+            writer.add_scalars('loss', {'train loss': train_loss, 'validation loss': val_loss}, k)
+            writer.add_scalars('accuracy', {'train accuracy': train_acc, 'validation accuracy': prec1}, k)
+        except Exception as Error:
+            msg=f"Exception error: {Error}"
+            logger.info(msg)
+        # 5.3 Report the results of the fault injection campaign
+        FI_setup.close_faulty_results()
+        FI_setup.parse_results()
+        FI_setup.write_reports()
+    writer.close()
     ########################################################################################
 
-    if args.evaluate:
-        from collections import OrderedDict
-        if os.path.isfile(args.weight):
-            print("=> loading pretrained weight '{}'".format(args.weight))
-            source_state = torch.load(args.weight)['state_dict']
-            target_state = OrderedDict()
-            for k, v in source_state.items():
-                if k[:7] != 'module.':
-                    k = 'module.' + k
-                target_state[k] = v
-
-            model.load_state_dict(target_state, strict='true')
-        else:
-            print("=> no weight found at '{}'".format(args.weight))
-
-        validate(train_loader, train_loader_len, model, criterion)
-        validate(val_loader, val_loader_len, model, criterion)
-        return
+    # if args.evaluate:
+    #     validate(train_loader, train_loader_len, model, criterion)
+    #     validate(val_loader, val_loader_len, model, criterion)
+    #     return
 
     # visualization
-    writer = SummaryWriter(os.path.join(args.checkpoint, 'logs'))
+    # writer = SummaryWriter(os.path.join(args.checkpoint, 'logs'))
 
-    for epoch in range(args.start_epoch, args.epochs):
-        print('\nEpoch: [%d | %d]' % (epoch + 1, args.epochs))
-
-        # train for one epoch
-        train_loss, train_acc = train(train_loader, train_loader_len, model, criterion, optimizer, epoch)
-
-        # evaluate on validation set
-        val_loss, prec1 = validate(val_loader, val_loader_len, model, criterion)
-
-        lr = optimizer.param_groups[0]['lr']
-
-        # append logger file
-        logger.append([epoch, lr, train_loss, val_loss, train_acc, prec1])
-
-        # tensorboardX
-        writer.add_scalar('learning rate', lr, epoch + 1)
-        writer.add_scalars('loss', {'train loss': train_loss, 'validation loss': val_loss}, epoch + 1)
-        writer.add_scalars('accuracy', {'train accuracy': train_acc, 'validation accuracy': prec1}, epoch + 1)
-
-        is_best = prec1 > best_prec1
-        best_prec1 = max(prec1, best_prec1)
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': model.state_dict(),
-            'best_prec1': best_prec1,
-            'optimizer': optimizer.state_dict(),
-        }, is_best, checkpoint=args.checkpoint)
-
-    logger.close()
-    logger.plot()
-    savefig(os.path.join(args.checkpoint, 'log.eps'))
-    writer.close()
-
-    with open(os.path.join(args.checkpoint, 'metadata.json'), "w") as f:
-        json.dump(config, f)
-
-    print('Best accuracy:')
-    print(best_prec1)
+   
 
 
-def train(train_loader, train_loader_len, model, criterion, optimizer, epoch):
-    bar = Bar('Train', max=train_loader_len)
-
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-
-    # switch to train mode
-    model.train()
-
-    end = time.time()
-    for i, (input, target) in enumerate(train_loader):
-        adjust_learning_rate(optimizer, epoch, i, train_loader_len)
-
-        # measure data loading time
-        data_time.update(time.time() - end)
-
-        target = target.cuda(non_blocking=True)
-        # compute output
-        output = model(input)
-        loss = criterion(output, target)
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), input.size(0))
-        top1.update(prec1.item(), input.size(0))
-        top5.update(prec5.item(), input.size(0))
-
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        # plot progress
-        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-            batch=i + 1,
-            size=train_loader_len,
-            data=data_time.avg,
-            bt=batch_time.avg,
-            total=bar.elapsed_td,
-            eta=bar.eta_td,
-            loss=losses.avg,
-            top1=top1.avg,
-            top5=top5.avg,
-        )
-        bar.next()
-    bar.finish()
-    return (losses.avg, top1.avg)
-
-
-def validate(val_loader, val_loader_len, model, criterion):
+def validate(val_loader, val_loader_len, model, criterion, fsim_enabled=False, Fsim_setup:FI_manager = None):
     bar = Bar('Val', max=val_loader_len)
 
     batch_time = AverageMeter()
@@ -323,11 +321,13 @@ def validate(val_loader, val_loader_len, model, criterion):
         data_time.update(time.time() - end)
 
         target = target.cuda(non_blocking=True)
-
+        #logger.info(f"Input={input.shape}")
         with torch.no_grad():
-            # compute output
+            # compute output            
             output = model(input)
             loss = criterion(output, target)
+            if fsim_enabled==True:
+                Fsim_setup.FI_report.update_report(i,output,target,topk=(1,5))
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output, target, topk=(1, 5))
