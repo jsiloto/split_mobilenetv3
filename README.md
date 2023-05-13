@@ -5,10 +5,12 @@
 To use the standardized environment on GPU 0 run:
 ```bash
 ./docker_build # this may take several minutes
-./docker_run -g 0 # GPU 0
+./docker_run -g 0
 ```
 
-
 ```bash
-python train.py --checkpoint split5 --pretrained --warmup --lr 0.001 --epochs 200 --config configs/split5.yaml
+python train.py --dataset stl10 --regular configs/model/regular.yaml --split configs/model/split.yaml
+
+# Extract the embeddings as
+python latency_benchmark.py --model configs/model/split.yaml --dataset stl10
 ```

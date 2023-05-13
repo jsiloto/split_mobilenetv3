@@ -11,9 +11,14 @@ import math
 
 import torch.nn as nn
 import torch.nn.init as init
+import yaml
 from torch.autograd import Variable
 
-__all__ = ['get_mean_and_std', 'init_params', 'mkdir_p', 'AverageMeter']
+__all__ = ['load_config', 'get_mean_and_std', 'init_params', 'mkdir_p', 'AverageMeter']
+
+def load_config(yaml_path):
+    with open(yaml_path) as f:
+        return yaml.full_load(f)
 
 
 def get_mean_and_std(dataset):

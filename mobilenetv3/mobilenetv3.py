@@ -4,10 +4,9 @@ Andrew Howard, Mark Sandler, Grace Chu, Liang-Chieh Chen, Bo Chen, Mingxing Tan,
 Searching for MobileNetV3
 arXiv preprint arXiv:1905.02244.
 """
-import torch
+
 import torch.nn as nn
 import math
-
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
@@ -55,10 +54,10 @@ class SELayer(nn.Module):
         super(SELayer, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
-                nn.Linear(channel, _make_divisible(channel // reduction, 8)),
-                nn.ReLU(inplace=True),
-                nn.Linear(_make_divisible(channel // reduction, 8), channel),
-                h_sigmoid()
+            nn.Linear(channel, _make_divisible(channel // reduction, 8)),
+            nn.ReLU(inplace=True),
+            nn.Linear(_make_divisible(channel // reduction, 8), channel),
+            h_sigmoid()
         )
 
     def forward(self, x):
@@ -94,7 +93,8 @@ class InvertedResidual(nn.Module):
         if inp == hidden_dim:
             self.conv = nn.Sequential(
                 # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim, bias=False),
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
+                          bias=False),
                 nn.BatchNorm2d(hidden_dim),
                 h_swish() if use_hs else nn.ReLU(inplace=True),
                 # Squeeze-and-Excite
@@ -110,7 +110,8 @@ class InvertedResidual(nn.Module):
                 nn.BatchNorm2d(hidden_dim),
                 h_swish() if use_hs else nn.ReLU(inplace=True),
                 # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim, bias=False),
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
+                          bias=False),
                 nn.BatchNorm2d(hidden_dim),
                 # Squeeze-and-Excite
                 SELayer(hidden_dim) if use_se else nn.Identity(),
@@ -125,6 +126,7 @@ class InvertedResidual(nn.Module):
             return x + self.conv(x)
         else:
             return self.conv(x)
+
 
 class Bottleneck(nn.Module):
     def __init__(self, input_channels, bottleneck_channels):
@@ -154,10 +156,26 @@ class Bottleneck(nn.Module):
 
     def forward(self, x):
         z = self.compressor(x)
-        self.size = z.shape[-1]*z.shape[-2]*z.shape[-3]
+        self.size = z.shape[-1] * z.shape[-2] * z.shape[-3]
         x = self.decompressor(z)
         return x
 
+
+class MobileNetV3Decoder(nn.Module):
+    def __init__(self, layers, conv, avgpool, classifier):
+        super().__init__()
+        self.layers = layers
+        self.conv = conv
+        self.avgpool = avgpool
+        self.classifier = classifier
+
+    def forward(self, x):
+        x = self.layers(x)
+        x = self.conv(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
 
 
 class MobileNetV3(nn.Module):
@@ -165,8 +183,8 @@ class MobileNetV3(nn.Module):
         super(MobileNetV3, self).__init__()
         # setting of inverted residual blocks
         self.cfgs = cfgs
-        self.split_position=split_position
-        #self.bottleneck = nn.Identity()
+        self.split_position = split_position
+        self.bottleneck = nn.Identity()
         assert mode in ['large', 'small']
 
         # building first layer
@@ -177,9 +195,8 @@ class MobileNetV3(nn.Module):
         for layer_num, (k, t, c, use_se, use_hs, s) in enumerate(self.cfgs):
             output_channel = _make_divisible(c * width_mult, 8)
             exp_size = _make_divisible(input_channel * t, 8)
-            # if layer_num == self.split_position:
-            #     #self.bottleneck = Bottleneck(input_channel, bottleneck_channels)
-            #     layers.append(Bottleneck(input_channel, bottleneck_channels))
+            if layer_num == self.split_position:
+                self.bottleneck = Bottleneck(input_channel, bottleneck_channels)
             layers.append(block(input_channel, exp_size, output_channel, k, s, use_se, use_hs))
             input_channel = output_channel
         self.features = nn.Sequential(*layers)
@@ -187,7 +204,8 @@ class MobileNetV3(nn.Module):
         self.conv = conv_1x1_bn(input_channel, exp_size)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         output_channel = {'large': 1280, 'small': 1024}
-        output_channel = _make_divisible(output_channel[mode] * width_mult, 8) if width_mult > 1.0 else output_channel[mode]
+        output_channel = _make_divisible(output_channel[mode] * width_mult, 8) if width_mult > 1.0 else output_channel[
+            mode]
         self.classifier = nn.Sequential(
             nn.Linear(exp_size, output_channel),
             h_swish(),
@@ -197,12 +215,23 @@ class MobileNetV3(nn.Module):
 
         self._initialize_weights()
 
+    def get_encoder(self):
+        layers = list(self.features[:self.split_position]) + [self.bottleneck.compressor]
+        return nn.Sequential(*layers)
+
+    def get_decoder(self):
+        layers = [self.bottleneck.decompressor] + list(self.features[self.split_position:])
+        return MobileNetV3Decoder(layers = nn.Sequential(*layers),
+                                  conv=self.conv,
+                                  avgpool=self.avgpool,
+                                  classifier=self.classifier)
+
     def forward(self, x):
-        # for index, l in enumerate(self.features):
-        #     # if index == self.split_position:
-        #     #     x = self.bottleneck(x)
-        #     x = l(x)
-        x = self.features(x)
+        for index, l in enumerate(self.features):
+            if index == self.split_position:
+                x = self.bottleneck(x)
+            x = l(x)
+
         x = self.conv(x)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -230,21 +259,21 @@ def mobilenetv3_large(**kwargs):
     """
     cfgs = [
         # k, t, c, SE, HS, s 
-        [3,   1,  16, 0, 0, 1],
-        [3,   4,  24, 0, 0, 2],
-        [3,   3,  24, 0, 0, 1],
-        [5,   3,  40, 1, 0, 2],
-        [5,   3,  40, 1, 0, 1],
-        [5,   3,  40, 1, 0, 1],
-        [3,   6,  80, 0, 1, 2],
-        [3, 2.5,  80, 0, 1, 1],
-        [3, 2.3,  80, 0, 1, 1],
-        [3, 2.3,  80, 0, 1, 1],
-        [3,   6, 112, 1, 1, 1],
-        [3,   6, 112, 1, 1, 1],
-        [5,   6, 160, 1, 1, 2],
-        [5,   6, 160, 1, 1, 1],
-        [5,   6, 160, 1, 1, 1]
+        [3, 1, 16, 0, 0, 1],
+        [3, 4, 24, 0, 0, 2],
+        [3, 3, 24, 0, 0, 1],
+        [5, 3, 40, 1, 0, 2],
+        [5, 3, 40, 1, 0, 1],
+        [5, 3, 40, 1, 0, 1],
+        [3, 6, 80, 0, 1, 2],
+        [3, 2.5, 80, 0, 1, 1],
+        [3, 2.3, 80, 0, 1, 1],
+        [3, 2.3, 80, 0, 1, 1],
+        [3, 6, 112, 1, 1, 1],
+        [3, 6, 112, 1, 1, 1],
+        [5, 6, 160, 1, 1, 2],
+        [5, 6, 160, 1, 1, 1],
+        [5, 6, 160, 1, 1, 1]
     ]
     return MobileNetV3(cfgs, mode='large', **kwargs)
 
@@ -255,66 +284,17 @@ def mobilenetv3_small(**kwargs):
     """
     cfgs = [
         # k, t, c, SE, HS, s 
-        [3,    1,  16, 1, 0, 2],
-        [3,  4.5,  24, 0, 0, 2],
-        [3, 3.67,  24, 0, 0, 1],
-        [5,    4,  40, 1, 1, 2],
-        [5,    6,  40, 1, 1, 1],
-        [5,    6,  40, 1, 1, 1],
-        [5,    3,  48, 1, 1, 1],
-        [5,    3,  48, 1, 1, 1],
-        [5,    6,  96, 1, 1, 2],
-        [5,    6,  96, 1, 1, 1],
-        [5,    6,  96, 1, 1, 1],
+        [3, 1, 16, 1, 0, 2],
+        [3, 4.5, 24, 0, 0, 2],
+        [3, 3.67, 24, 0, 0, 1],
+        [5, 4, 40, 1, 1, 2],
+        [5, 6, 40, 1, 1, 1],
+        [5, 6, 40, 1, 1, 1],
+        [5, 3, 48, 1, 1, 1],
+        [5, 3, 48, 1, 1, 1],
+        [5, 6, 96, 1, 1, 2],
+        [5, 6, 96, 1, 1, 1],
+        [5, 6, 96, 1, 1, 1],
     ]
 
     return MobileNetV3(cfgs, mode='small', **kwargs)
-
-
-
-class SplitMobileNetV3(nn.Module):
-    def __init__(self, pretrained=False, split_position=-1, bottleneck_channels=-1, **kwargs) -> None:
-        super(SplitMobileNetV3,self).__init__()
-        model = mobilenetv3_large(**kwargs)
-        if pretrained:
-            state_dict = torch.load('mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
-            state_dict.pop("classifier.3.weight")
-            state_dict.pop("classifier.3.bias")
-            model.load_state_dict(state_dict, strict=False)
-        
-        # Make MobileNet splitable using ordered layers structure (for FI purposes)
-        
-        if split_position>0:
-            # Catch the first layers 
-            head=nn.Sequential(*list(model.features.children())[:split_position])
-            # insert the bottleneck layers
-            self.channels=[]
-            self.check_channels(list(model.features.children())[split_position])
-            bottleneck=Bottleneck(self.channels[0], bottleneck_channels)
-            # Capture the subsequent layers
-            tail=nn.Sequential(*list(model.features.children())[split_position:-1])        
-            layers=[head,bottleneck,tail]
-            # create the features model
-            self.features=nn.Sequential(*list(layers))
-        else:
-            self.features=model.features
-            
-        self.conv = model.conv
-        self.avgpool = model.avgpool
-        self.classifier = model.classifier 
-
-
-    def check_channels(self,model:nn.Module):        
-        for name, module in model.named_children():
-            if len(list(module.children())) > 0:
-                self.check_channels(module)               
-            if isinstance(module,nn.Conv2d):
-                self.channels.append(module.in_channels)             
-        
-    def forward(self, x):
-        x = self.features(x)
-        x = self.conv(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
