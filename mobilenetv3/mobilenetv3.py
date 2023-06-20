@@ -128,43 +128,23 @@ class InvertedResidual(nn.Module):
             return self.conv(x)
 
 
-class Bottleneck(nn.Module):
-    def __init__(self, input_channels, bottleneck_channels):
+class MobileNetV3Encoder(nn.Module):
+    def __init__(self, layers: nn.Sequential, bottleneck_size: int):
         super().__init__()
-        print(f"Building bottleneck with size:{bottleneck_channels}")
-        self.input_channels = input_channels
-        self.bottleneck_channels = bottleneck_channels
-        self.size = None
-
-        inp = input_channels
-        hidden_dim = bottleneck_channels
-
-        self.compressor = nn.Sequential(
-            nn.Conv2d(inp, inp, 5, 1, 0, bias=True),
-            nn.BatchNorm2d(inp),
-            h_swish(),
-            nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(hidden_dim),
-            SELayer(hidden_dim))
-        self.decompressor = nn.Sequential(
-            h_swish(),
-            nn.Conv2d(hidden_dim, inp, 1, 1, 0, bias=False),
-            nn.BatchNorm2d(inp),
-            h_swish(),
-            nn.ConvTranspose2d(inp, inp, 5, 1, 0, bias=True),
-            nn.BatchNorm2d(inp))
+        self.layers = nn.Sequential(*layers)
+        self.bottleneck_size = bottleneck_size
 
     def forward(self, x):
-        z = self.compressor(x)
-        self.size = z.shape[-1] * z.shape[-2] * z.shape[-3]
-        x = self.decompressor(z)
+        x = self.layers(x)
+        x[:, self.bottleneck_channels:, ::] = 0
+        x = x[:, :self.bottleneck_channels, ::]
         return x
 
 
 class MobileNetV3Decoder(nn.Module):
-    def __init__(self, layers, conv, avgpool, classifier):
+    def __init__(self, layers, conv, avgpool, classifier, bottleneck_size: int):
         super().__init__()
-        self.layers = layers
+        self.layers = nn.Sequential(*layers)
         self.conv = conv
         self.avgpool = avgpool
         self.classifier = classifier
@@ -195,8 +175,6 @@ class MobileNetV3(nn.Module):
         for layer_num, (k, t, c, use_se, use_hs, s) in enumerate(self.cfgs):
             output_channel = _make_divisible(c * width_mult, 8)
             exp_size = _make_divisible(input_channel * t, 8)
-            if layer_num == self.split_position:
-                self.bottleneck = Bottleneck(input_channel, bottleneck_channels)
             layers.append(block(input_channel, exp_size, output_channel, k, s, use_se, use_hs))
             input_channel = output_channel
         self.features = nn.Sequential(*layers)
@@ -213,29 +191,18 @@ class MobileNetV3(nn.Module):
             nn.Linear(output_channel, num_classes),
         )
 
+        encoder_layers = list(self.features[:self.split_position])
+        decoder_layers = list(self.features[self.split_position:])
+        self.encoder = MobileNetV3Encoder(encoder_layers, bottleneck_size=bottleneck_channels)
+        self.decoder = MobileNetV3Decoder(layers=nn.Sequential(*layers),
+                                          conv=self.conv,
+                                          avgpool=self.avgpool,
+                                          classifier=self.classifier, bottleneck_size=bottleneck_channels)
         self._initialize_weights()
 
-    def get_encoder(self):
-        layers = list(self.features[:self.split_position]) + [self.bottleneck.compressor]
-        return nn.Sequential(*layers)
-
-    def get_decoder(self):
-        layers = [self.bottleneck.decompressor] + list(self.features[self.split_position:])
-        return MobileNetV3Decoder(layers = nn.Sequential(*layers),
-                                  conv=self.conv,
-                                  avgpool=self.avgpool,
-                                  classifier=self.classifier)
-
     def forward(self, x):
-        for index, l in enumerate(self.features):
-            if index == self.split_position:
-                x = self.bottleneck(x)
-            x = l(x)
-
-        x = self.conv(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
+        x = self.encoder(x)
+        x = self.decoder(x)
         return x
 
     def _initialize_weights(self):
@@ -251,6 +218,21 @@ class MobileNetV3(nn.Module):
             elif isinstance(m, nn.Linear):
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
+
+        # Dong et al 2022 initialization
+        def dong_init(block):
+            print(block)
+            for m in block.modules():
+                if isinstance(m, nn.Conv2d):
+                    print(m)
+                    n = m.kernel_size[0] * m.kernel_size[1] * math.sqrt(m.out_channels * m.in_channels)
+                    m.weight.data.normal_(0, math.sqrt(2. / n))
+
+        if self.split_position > 0:
+            dong_init(self.encoder.layers[-1])
+            print(self.decoder)
+            exit()
+            dong_init(self.decoder.layers[0])
 
 
 def mobilenetv3_large(**kwargs):
