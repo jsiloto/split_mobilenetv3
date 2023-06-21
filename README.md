@@ -15,9 +15,8 @@ https://drive.google.com/file/d/1wnBBQYG21b_rvGlmDi9kboTxcDlbRV2K/view?usp=shari
 
 ```
 
+Run Training and Latency Benchmarks
 ```bash
 python train.py --dataset oxford_pets --model configs/model/split.yaml
-
-# Extract the embeddings as
 python latency_benchmark.py --model configs/model/split.yaml --dataset oxford_pets
 ```
