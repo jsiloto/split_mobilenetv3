@@ -1,5 +1,5 @@
 lr: 0.001
-epochs: 300
+epochs: 70
 batch_size: 128
 warmup: True
 pretrained: True

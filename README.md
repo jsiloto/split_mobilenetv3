@@ -8,9 +8,16 @@ To use the standardized environment on GPU 0 run:
 ./docker_run -g 0
 ```
 
+Download example checkpoints
 ```bash
-python train.py --dataset stl10 --regular configs/model/regular.yaml --split configs/model/split.yaml
+wget --no-check-certificate 'https://drive.google.com/u/0/uc?export=download&confirm=1wnBBQYG21b_rvGlmDi9kboTxcDlbRV2K' -O checkpoints.zip
+https://drive.google.com/file/d/1wnBBQYG21b_rvGlmDi9kboTxcDlbRV2K/view?usp=sharing
+
+```
+
+```bash
+python train.py --dataset oxford_pets --model configs/model/split.yaml
 
 # Extract the embeddings as
-python latency_benchmark.py --model configs/model/split.yaml --dataset stl10
+python latency_benchmark.py --model configs/model/split.yaml --dataset oxford_pets
 ```

@@ -3,4 +3,5 @@
 data/
 split5/
 checkpoints/
+*.zip
 __pycache__/

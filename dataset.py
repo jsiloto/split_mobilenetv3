@@ -30,7 +30,7 @@ def get_transforms(split='train', input_size=(96, 96), jpeg_quality=None):
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.RandomRotation(degrees=(-20, 20)),
-            transforms.RandomResizedCrop(input_size),
+            transforms.RandomResizedCrop(input_size, antialias=True),
             transforms.RandomHorizontalFlip(),
         ])
     elif split == 'test':
@@ -42,7 +42,7 @@ def get_transforms(split='train', input_size=(96, 96), jpeg_quality=None):
     return transform
 
 
-def get_dataset(dataset_name, batch_size, jpeg_quality=None, workers=4):
+def get_dataset(dataset_name, batch_size, jpeg_quality=None, workers=8):
     num_classes = 0
     if dataset_name == "stl10":
         input_shape = (96, 96)

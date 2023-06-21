@@ -54,8 +54,8 @@ def main():
     model_config = load_config(args.model)
     model = get_model(model_config, num_classes=d.num_classes)
 
-    encoder = model.module.get_encoder()
-    decoder = model.module.get_decoder()
+    encoder = model.module.encoder
+    decoder = model.module.decoder
 
     # print(encoder)
     # print(decoder)
