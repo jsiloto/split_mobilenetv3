@@ -4,7 +4,7 @@ Andrew Howard, Mark Sandler, Grace Chu, Liang-Chieh Chen, Bo Chen, Mingxing Tan,
 Searching for MobileNetV3
 arXiv preprint arXiv:1905.02244.
 """
-
+import torch
 import torch.nn as nn
 import math
 
@@ -132,7 +132,7 @@ class MobileNetV3Encoder(nn.Module):
     def __init__(self, layers: nn.Sequential, bottleneck_size: int):
         super().__init__()
         self.layers = nn.Sequential(*layers)
-        self.bottleneck_size = bottleneck_size
+        self.bottleneck_channels = bottleneck_size
 
     def forward(self, x):
         x = self.layers(x)
@@ -148,8 +148,13 @@ class MobileNetV3Decoder(nn.Module):
         self.conv = conv
         self.avgpool = avgpool
         self.classifier = classifier
+        self.bottleneck_channels = bottleneck_size
 
     def forward(self, x):
+        original_size = self.layers[0].conv[0].in_channels
+        zeros = torch.zeros(x.shape[0], original_size - self.bottleneck_channels, x.shape[2], x.shape[3]).to(x.get_device())
+        x = torch.cat((x, zeros), dim=1)
+
         x = self.layers(x)
         x = self.conv(x)
         x = self.avgpool(x)
@@ -194,7 +199,7 @@ class MobileNetV3(nn.Module):
         encoder_layers = list(self.features[:self.split_position])
         decoder_layers = list(self.features[self.split_position:])
         self.encoder = MobileNetV3Encoder(encoder_layers, bottleneck_size=bottleneck_channels)
-        self.decoder = MobileNetV3Decoder(layers=nn.Sequential(*layers),
+        self.decoder = MobileNetV3Decoder(layers=nn.Sequential(*decoder_layers),
                                           conv=self.conv,
                                           avgpool=self.avgpool,
                                           classifier=self.classifier, bottleneck_size=bottleneck_channels)
@@ -221,17 +226,13 @@ class MobileNetV3(nn.Module):
 
         # Dong et al 2022 initialization
         def dong_init(block):
-            print(block)
             for m in block.modules():
                 if isinstance(m, nn.Conv2d):
-                    print(m)
                     n = m.kernel_size[0] * m.kernel_size[1] * math.sqrt(m.out_channels * m.in_channels)
                     m.weight.data.normal_(0, math.sqrt(2. / n))
 
         if self.split_position > 0:
             dong_init(self.encoder.layers[-1])
-            print(self.decoder)
-            exit()
             dong_init(self.decoder.layers[0])
 
 
