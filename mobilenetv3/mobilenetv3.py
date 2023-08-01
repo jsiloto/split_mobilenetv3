@@ -129,31 +129,46 @@ class InvertedResidual(nn.Module):
 
 
 class MobileNetV3Encoder(nn.Module):
-    def __init__(self, layers: nn.Sequential, bottleneck_size: int):
+    def __init__(self, layers: nn.Sequential, original_channels: int, bottleneck_ratio: float):
         super().__init__()
         self.layers = nn.Sequential(*layers)
-        self.bottleneck_channels = bottleneck_size
+        self.bottleneck_ratio = bottleneck_ratio
+        self.original_channels = original_channels
+        self.quant = nn.Identity()
 
     def forward(self, x):
         x = self.layers(x)
-        x[:, self.bottleneck_channels:, ::] = 0
-        x = x[:, :self.bottleneck_channels, ::]
+        bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
+        if bottleneck_channels > 0:
+            x[:, bottleneck_channels:, ::] = 0
+            x = x[:, :bottleneck_channels, ::]
+
+        x = self.quant(x)
         return x
 
 
 class MobileNetV3Decoder(nn.Module):
-    def __init__(self, layers, conv, avgpool, classifier, bottleneck_size: int):
+    def __init__(self, layers, conv, avgpool, classifier, original_channels: int, bottleneck_ratio: float):
         super().__init__()
         self.layers = nn.Sequential(*layers)
         self.conv = conv
         self.avgpool = avgpool
         self.classifier = classifier
-        self.bottleneck_channels = bottleneck_size
+        self.bottleneck_ratio = bottleneck_ratio
+        self.original_channels = original_channels
+        self.dequant = nn.Identity()
 
     def forward(self, x):
+        x = self.dequant(x)
+
         original_size = self.layers[0].conv[0].in_channels
-        zeros = torch.zeros(x.shape[0], original_size - self.bottleneck_channels, x.shape[2], x.shape[3]).to(x.get_device())
-        x = torch.cat((x, zeros), dim=1)
+        bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
+        if self.bottleneck_ratio > 0:
+            device = x.get_device()
+            if device < 0:
+                device = torch.device("cpu")
+            zeros = torch.zeros(x.shape[0], original_size - bottleneck_channels, x.shape[2], x.shape[3]).to(device)
+            x = torch.cat((x, zeros), dim=1)
 
         x = self.layers(x)
         x = self.conv(x)
@@ -164,13 +179,14 @@ class MobileNetV3Decoder(nn.Module):
 
 
 class MobileNetV3(nn.Module):
-    def __init__(self, cfgs, mode, num_classes=1000, width_mult=1., split_position=-1, bottleneck_channels=-1):
+    def __init__(self, cfgs, mode, num_classes=1000, width_mult=1., split_position=1, bottleneck_ratio=-1):
         super(MobileNetV3, self).__init__()
         # setting of inverted residual blocks
         self.cfgs = cfgs
         self.split_position = split_position
         self.bottleneck = nn.Identity()
         assert mode in ['large', 'small']
+        assert split_position >= 1
 
         # building first layer
         input_channel = _make_divisible(16 * width_mult, 8)
@@ -196,13 +212,21 @@ class MobileNetV3(nn.Module):
             nn.Linear(output_channel, num_classes),
         )
 
+
+        original_channels = self.cfgs[self.split_position][2]
         encoder_layers = list(self.features[:self.split_position])
         decoder_layers = list(self.features[self.split_position:])
-        self.encoder = MobileNetV3Encoder(encoder_layers, bottleneck_size=bottleneck_channels)
+        self.encoder = MobileNetV3Encoder(encoder_layers,
+                                          original_channels=original_channels,
+                                          bottleneck_ratio=bottleneck_ratio)
         self.decoder = MobileNetV3Decoder(layers=nn.Sequential(*decoder_layers),
                                           conv=self.conv,
                                           avgpool=self.avgpool,
-                                          classifier=self.classifier, bottleneck_size=bottleneck_channels)
+                                          classifier=self.classifier,
+                                          original_channels=original_channels,
+                                          bottleneck_ratio=bottleneck_ratio)
+
+
         self._initialize_weights()
 
     def forward(self, x):
@@ -241,7 +265,7 @@ def mobilenetv3_large(**kwargs):
     Constructs a MobileNetV3-Large model
     """
     cfgs = [
-        # k, t, c, SE, HS, s 
+        # k, t, c, SE, HS, s
         [3, 1, 16, 0, 0, 1],
         [3, 4, 24, 0, 0, 2],
         [3, 3, 24, 0, 0, 1],
@@ -266,7 +290,7 @@ def mobilenetv3_small(**kwargs):
     Constructs a MobileNetV3-Small model
     """
     cfgs = [
-        # k, t, c, SE, HS, s 
+        # k, t, c, SE, HS, s
         [3, 1, 16, 1, 0, 2],
         [3, 4.5, 24, 0, 0, 2],
         [3, 3.67, 24, 0, 0, 1],

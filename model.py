@@ -6,12 +6,9 @@ from mobilenetv3 import mobilenetv3
 from utils import mkdir_p, Logger
 def get_model(model_config, num_classes=10):
     # create model
-    print(model_config)
-    split_position = model_config.get('split_position', -1)
-    bottleneck_channels = model_config.get('bottleneck_channels', -1)
+    model_params = model_config['model_params']
     model = mobilenetv3.mobilenetv3_large(num_classes=num_classes, width_mult=1.0,
-                                          split_position=split_position,
-                                          bottleneck_channels=bottleneck_channels)
+                                          **model_params)
     if model_config['pretrained']:
         state_dict = torch.load('mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
         state_dict.pop("classifier.3.weight")
