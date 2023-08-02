@@ -29,6 +29,8 @@ from mobilenetv3 import mobilenetv3
 from model import get_model, resume_model
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
+
+
 class LRAdjust:
     def __init__(self, config):
         self.lr = config['lr']
@@ -146,8 +148,8 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
         target = target.cuda(non_blocking=True)
         # compute output
-        output = model(input)
-        loss = criterion(output, target)
+        output, likelihoods = model(input)
+        loss = criterion(output, target) + 0.1*likelihoods.mean()
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))

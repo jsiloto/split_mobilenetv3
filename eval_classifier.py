@@ -2,6 +2,7 @@ import time
 import torch
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
+
 def validate(val_loader, val_loader_len, model, criterion, title='Val'):
     num_classes = model.module.classifier[3].out_features
     bar = Bar(title, max=val_loader_len)
@@ -25,13 +26,13 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
         with torch.no_grad():
             # compute output
-            output = model(input)
+            output, likelihoods = model(input)
             loss = criterion(output, target)
 
         # measure accuracy and record loss
         for i in range(len(target)):
-            t = target[i:i+1]
-            o = output[i:i+1]
+            t = target[i:i + 1]
+            o = output[i:i + 1]
             prec1, prec5 = accuracy(o, t, topk=(1, 5))
             class_prec[t.item()].update(prec1.item(), 1)
 

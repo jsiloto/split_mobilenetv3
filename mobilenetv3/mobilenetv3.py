@@ -7,6 +7,7 @@ arXiv preprint arXiv:1905.02244.
 import torch
 import torch.nn as nn
 import math
+from compressai.latent_codecs import GainHyperpriorLatentCodec, HyperpriorLatentCodec, EntropyBottleneckLatentCodec
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
@@ -212,6 +213,7 @@ class MobileNetV3(nn.Module):
             nn.Linear(output_channel, num_classes),
         )
 
+        self.codec = EntropyBottleneckLatentCodec(channels=20)
 
         original_channels = self.cfgs[self.split_position][2]
         encoder_layers = list(self.features[:self.split_position])
@@ -231,8 +233,11 @@ class MobileNetV3(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
+        c = self.codec(x)
+        x = c['y_hat']
+        likelihoods = c['likelihoods']['y']
         x = self.decoder(x)
-        return x
+        return x, likelihoods
 
     def _initialize_weights(self):
         for m in self.modules():
