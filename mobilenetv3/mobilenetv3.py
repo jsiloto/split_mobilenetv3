@@ -232,12 +232,21 @@ class MobileNetV3(nn.Module):
         self._initialize_weights()
 
     def forward(self, x):
+        output={}
         x = self.encoder(x)
-        c = self.codec(x)
-        x = c['y_hat']
-        likelihoods = c['likelihoods']['y']
+
+        if self.training:
+            c = self.codec(x)
+            x = c['y_hat']
+            output['likelihoods'] = c['likelihoods']['y']
+        else:
+            c = self.codec.compress(x)
+            x = c['y_hat']
+            output['strings'] = c['strings']
+
         x = self.decoder(x)
-        return x, likelihoods
+        output['y_hat'] = x
+        return output
 
     def _initialize_weights(self):
         for m in self.modules():

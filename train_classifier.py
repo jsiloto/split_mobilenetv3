@@ -148,10 +148,12 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
         target = target.cuda(non_blocking=True)
         # compute output
-        output, likelihoods = model(input)
-        loss = criterion(output, target) + 0.1*likelihoods.mean()
+        output = model(input)
+        y_hat = output['y_hat']
+        likelihoods = output['likelihoods']
+        loss = criterion(y_hat, target) + 1.0*likelihoods.mean()
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output, target, topk=(1, 5))
+        prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
