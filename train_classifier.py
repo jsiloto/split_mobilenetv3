@@ -148,7 +148,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
         target = target.cuda(non_blocking=True)
         # compute output
-        output = model(input)
+        output = model(input.to('cuda'))
         y_hat = output['y_hat']
         likelihoods = output['likelihoods']
         loss = criterion(y_hat, target) + 1.0*likelihoods.mean()
@@ -168,7 +168,10 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         end = time.time()
 
         # plot progress
-        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | ' \
+                     'Batch: {bt:.3f}s | Total: {total:} |' \
+                     ' ETA: {eta:} | Loss: {loss:.4f} | ' \
+                     'top1: {top1: .4f} | top5: {top5: .4f} | Likelihood: {likelihood: .4f}'.format(
             batch=i + 1,
             size=train_loader_len,
             data=data_time.avg,
@@ -178,6 +181,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
             loss=losses.avg,
             top1=top1.avg,
             top5=top5.avg,
+            likelihood=likelihoods.mean()
         )
         bar.next()
     bar.finish()

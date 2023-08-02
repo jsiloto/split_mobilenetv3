@@ -4,7 +4,7 @@ from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 
 def validate(val_loader, val_loader_len, model, criterion, title='Val'):
-    num_classes = model.module.classifier[3].out_features
+    num_classes = model.classifier[3].out_features
     bar = Bar(title, max=val_loader_len)
 
     batch_time = AverageMeter()
@@ -15,7 +15,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
     # switch to evaluate mode
     model.eval()
-    model.module.codec.entropy_bottleneck.update()
+    model.codec.entropy_bottleneck.update()
 
     end = time.time()
     class_prec = [AverageMeter() for i in range(num_classes)]
@@ -27,7 +27,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
         with torch.no_grad():
             # compute output
-            output = model(input)
+            output = model(input.to('cuda'))
             y_hat = output['y_hat']
             strings = output['strings']
             loss = criterion(y_hat, target)
@@ -51,7 +51,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
         # plot progress
         bar.suffix = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:}' \
-                     ' | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .3f} | top5: {top5: .3f} | Bytes: {num_bytes:}'.format(
+                     ' | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .3f} | top5: {top5: .3f} | Bytes: {num_bytes: .1f}'.format(
             batch=i + 1,
             size=val_loader_len,
             data=data_time.avg,

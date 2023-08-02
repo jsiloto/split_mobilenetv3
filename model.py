@@ -15,7 +15,7 @@ def get_model(model_config, num_classes=10):
         state_dict.pop("classifier.3.bias")
         model.load_state_dict(state_dict, strict=False)
 
-    model = torch.nn.DataParallel(model).cuda()
+    model = model.cuda()
     return model
 
 def resume_model(model, checkpoint_path, optimizer=None, best=False):
