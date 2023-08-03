@@ -54,12 +54,8 @@ def main():
     model_config = load_config(args.model)
     model = get_model(model_config, num_classes=d.num_classes)
 
-    encoder = model.module.encoder
-    decoder = model.module.decoder
-
-    # print(encoder)
-    # print(decoder)
-
+    encoder = model.encoder
+    decoder = model.decoder
 
     print("Full Model")
     benchmark_model_inference(model=model, input_shape=d.input_shape, device="cuda:0")

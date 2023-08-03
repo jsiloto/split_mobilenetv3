@@ -30,7 +30,7 @@ class Bar(WritelnMixin, Progress):
     bar_suffix = '| '
     empty_fill = ' '
     fill = '#'
-    hide_cursor = True
+    hide_cursor = False
 
     def update(self):
         filled_length = int(self.width * self.progress)

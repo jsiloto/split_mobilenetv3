@@ -29,6 +29,8 @@ from mobilenetv3 import mobilenetv3
 from model import get_model, resume_model
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
+
+
 class LRAdjust:
     def __init__(self, config):
         self.lr = config['lr']
@@ -62,6 +64,7 @@ def train_classifier(dataset_name, model_config):
 
     # optionally resume from a checkpoint
     checkpoint_path = model_config['checkpoint']
+    model.codec.entropy_bottleneck.update()
     model, start_epoch, best_prec1 = resume_model(model, checkpoint_path, optimizer, best=False)
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
@@ -146,10 +149,13 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
         target = target.cuda(non_blocking=True)
         # compute output
-        output = model(input)
-        loss = criterion(output, target)
+        output = model(input.to('cuda'))
+        y_hat = output['y_hat']
+        likelihoods = output['likelihoods']
+        lloss = -likelihoods.mean()
+        loss = criterion(y_hat, target) + lloss
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output, target, topk=(1, 5))
+        prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
@@ -164,7 +170,10 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         end = time.time()
 
         # plot progress
-        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | ' \
+                     'Batch: {bt:.3f}s | Total: {total:} |' \
+                     ' ETA: {eta:} | Loss: {loss:.4f} | ' \
+                     'top1: {top1: .4f} | top5: {top5: .4f} | LLos: {lloss: .4f}'.format(
             batch=i + 1,
             size=train_loader_len,
             data=data_time.avg,
@@ -174,6 +183,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
             loss=losses.avg,
             top1=top1.avg,
             top5=top5.avg,
+            lloss=lloss
         )
         bar.next()
     bar.finish()

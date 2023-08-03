@@ -18,5 +18,5 @@ scipy
 scikit-learn
 jupyter
 torch_tb_profiler
-compressai
 h5py
+compressai @ git+https://github.com/InterDigitalInc/CompressAI.git@5b4aac0

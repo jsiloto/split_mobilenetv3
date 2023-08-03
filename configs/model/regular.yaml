@@ -3,3 +3,4 @@ epochs: 300
 batch_size: 128
 warmup: True
 pretrained: True
+model_params: {}
