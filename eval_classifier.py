@@ -15,7 +15,6 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
     # switch to evaluate mode
     model.eval()
-    model.codec.entropy_bottleneck.update()
 
     end = time.time()
     class_prec = [AverageMeter() for i in range(num_classes)]

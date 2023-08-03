@@ -238,7 +238,7 @@ class MobileNetV3(nn.Module):
         if self.training:
             c = self.codec(x)
             x = c['y_hat']
-            output['likelihoods'] = c['likelihoods']['y']
+            output['likelihoods'] = c['likelihoods']['y'].log2()
         else:
             c = self.codec.compress(x)
             x = c['y_hat']
