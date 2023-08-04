@@ -11,6 +11,8 @@ from compressai.latent_codecs import GainHyperpriorLatentCodec, HyperpriorLatent
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
+from mobilenetv3.encoder import MobileNetV3VanillaEncoder, MobileNetV3Decoder
+
 
 def _make_divisible(v, divisor, min_value=None):
     """
@@ -129,56 +131,6 @@ class InvertedResidual(nn.Module):
             return self.conv(x)
 
 
-class MobileNetV3Encoder(nn.Module):
-    def __init__(self, layers: nn.Sequential, original_channels: int, bottleneck_ratio: float):
-        super().__init__()
-        self.layers = nn.Sequential(*layers)
-        self.bottleneck_ratio = bottleneck_ratio
-        self.original_channels = original_channels
-        self.quant = nn.Identity()
-
-    def forward(self, x):
-        x = self.layers(x)
-        bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
-        if bottleneck_channels > 0:
-            x[:, bottleneck_channels:, ::] = 0
-            x = x[:, :bottleneck_channels, ::]
-
-        x = self.quant(x)
-        return x
-
-
-class MobileNetV3Decoder(nn.Module):
-    def __init__(self, layers, conv, avgpool, classifier, original_channels: int, bottleneck_ratio: float):
-        super().__init__()
-        self.layers = nn.Sequential(*layers)
-        self.conv = conv
-        self.avgpool = avgpool
-        self.classifier = classifier
-        self.bottleneck_ratio = bottleneck_ratio
-        self.original_channels = original_channels
-        self.dequant = nn.Identity()
-
-    def forward(self, x):
-        x = self.dequant(x)
-
-        original_size = self.layers[0].conv[0].in_channels
-        bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
-        if self.bottleneck_ratio > 0:
-            device = x.get_device()
-            if device < 0:
-                device = torch.device("cpu")
-            zeros = torch.zeros(x.shape[0], original_size - bottleneck_channels, x.shape[2], x.shape[3]).to(device)
-            x = torch.cat((x, zeros), dim=1)
-
-        x = self.layers(x)
-        x = self.conv(x)
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.classifier(x)
-        return x
-
-
 class MobileNetV3(nn.Module):
     def __init__(self, cfgs, mode, num_classes=1000, width_mult=1., split_position=1, bottleneck_ratio=-1):
         super(MobileNetV3, self).__init__()
@@ -213,40 +165,28 @@ class MobileNetV3(nn.Module):
             nn.Linear(output_channel, num_classes),
         )
 
-        self.codec = EntropyBottleneckLatentCodec(channels=20)
-
         original_channels = self.cfgs[self.split_position][2]
-        encoder_layers = list(self.features[:self.split_position])
-        decoder_layers = list(self.features[self.split_position:])
-        self.encoder = MobileNetV3Encoder(encoder_layers,
-                                          original_channels=original_channels,
-                                          bottleneck_ratio=bottleneck_ratio)
-        self.decoder = MobileNetV3Decoder(layers=nn.Sequential(*decoder_layers),
+        encoder_layers = nn.Sequential(*list(self.features[:self.split_position]))
+        decoder_layers = nn.Sequential(*list(self.features[self.split_position:]))
+
+        self.encoder = MobileNetV3VanillaEncoder(encoder_layers,
+                                                 original_channels=original_channels,
+                                                 bottleneck_ratio=bottleneck_ratio)
+        self.decoder = MobileNetV3Decoder(layers=decoder_layers,
                                           conv=self.conv,
                                           avgpool=self.avgpool,
                                           classifier=self.classifier,
+                                          codec=self.encoder.codec,
                                           original_channels=original_channels,
                                           bottleneck_ratio=bottleneck_ratio)
-
 
         self._initialize_weights()
 
     def forward(self, x):
-        output={}
-        x = self.encoder(x)
-
-        if self.training:
-            c = self.codec(x)
-            x = c['y_hat']
-            output['likelihoods'] = c['likelihoods']['y'].log2()
-        else:
-            c = self.codec.compress(x)
-            x = c['y_hat']
-            output['strings'] = c['strings']
-
-        x = self.decoder(x)
-        output['y_hat'] = x
-        return output
+        output = self.encoder(x)
+        y_hat = self.decoder(output['y_hat'])
+        output['y_hat'] = y_hat
+        return x
 
     def _initialize_weights(self):
         for m in self.modules():

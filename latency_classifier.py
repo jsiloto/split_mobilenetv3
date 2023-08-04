@@ -53,10 +53,10 @@ def main():
 
     model_config = load_config(args.model)
     model = get_model(model_config, num_classes=d.num_classes)
-
+    model.eval()
     encoder = model.encoder
     decoder = model.decoder
-
+    encoder.codec.entropy_bottleneck.update()
     print("Full Model")
     benchmark_model_inference(model=model, input_shape=d.input_shape, device="cuda:0")
 
@@ -64,8 +64,7 @@ def main():
     benchmark_model_inference(model=encoder, input_shape=d.input_shape, device="cuda:0")
 
     print("Decoder Model")
-    shape = encoder(torch.unsqueeze(input_image, dim=0)).shape
-    # print(shape)
+    shape = encoder(torch.unsqueeze(input_image, dim=0))['y_hat'].shape
     benchmark_model_inference(model=decoder, input_shape=shape[1:], device="cuda:0")
 
 
