@@ -2,6 +2,16 @@ import torch
 from compressai.latent_codecs import EntropyBottleneckLatentCodec
 from torch import nn
 
+from mobilenetv3.layers import h_swish, h_sigmoid, InvertedResidual
+
+
+def get_encoder(encoder: str):
+    encoder_dict = {
+        "vanilla": MobileNetV3VanillaEncoder,
+        "gdn": MobileNetV3VanillaEncoder,
+    }
+    return encoder_dict[encoder]
+
 
 class MobileNetV3VanillaEncoder(nn.Module):
     def __init__(self, layers: nn.Sequential, original_channels: int, bottleneck_ratio: float):
@@ -28,13 +38,15 @@ class MobileNetV3VanillaEncoder(nn.Module):
 class MobileNetV3Decoder(nn.Module):
     def __init__(self, layers, conv, avgpool, classifier, codec, original_channels: int, bottleneck_ratio: float):
         super().__init__()
-        self.layers = nn.Sequential(*layers)
+        self.layers = layers
         self.conv = conv
         self.avgpool = avgpool
         self.classifier = classifier
         self.bottleneck_ratio = bottleneck_ratio
         self.original_channels = original_channels
         self.codec = codec
+        print(layers)
+
 
     def forward(self, x):
         original_size = self.layers[0].conv[0].in_channels

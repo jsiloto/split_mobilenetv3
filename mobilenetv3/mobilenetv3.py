@@ -11,128 +11,13 @@ from compressai.latent_codecs import GainHyperpriorLatentCodec, HyperpriorLatent
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
-from mobilenetv3.encoder import MobileNetV3VanillaEncoder, MobileNetV3Decoder
-
-
-def _make_divisible(v, divisor, min_value=None):
-    """
-    This function is taken from the original tf repo.
-    It ensures that all layers have a channel number that is divisible by 8
-    It can be seen here:
-    https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet.py
-    :param v:
-    :param divisor:
-    :param min_value:
-    :return:
-    """
-    if min_value is None:
-        min_value = divisor
-    new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
-    # Make sure that round down does not go down by more than 10%.
-    if new_v < 0.9 * v:
-        new_v += divisor
-    return new_v
-
-
-class h_sigmoid(nn.Module):
-    def __init__(self, inplace=True):
-        super(h_sigmoid, self).__init__()
-        self.relu = nn.ReLU6(inplace=inplace)
-
-    def forward(self, x):
-        return self.relu(x + 3) / 6
-
-
-class h_swish(nn.Module):
-    def __init__(self, inplace=True):
-        super(h_swish, self).__init__()
-        self.sigmoid = h_sigmoid(inplace=inplace)
-
-    def forward(self, x):
-        return x * self.sigmoid(x)
-
-
-class SELayer(nn.Module):
-    def __init__(self, channel, reduction=4):
-        super(SELayer, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(channel, _make_divisible(channel // reduction, 8)),
-            nn.ReLU(inplace=True),
-            nn.Linear(_make_divisible(channel // reduction, 8), channel),
-            h_sigmoid()
-        )
-
-    def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y
-
-
-def conv_3x3_bn(inp, oup, stride):
-    return nn.Sequential(
-        nn.Conv2d(inp, oup, 3, stride, 1, bias=False),
-        nn.BatchNorm2d(oup),
-        h_swish()
-    )
-
-
-def conv_1x1_bn(inp, oup):
-    return nn.Sequential(
-        nn.Conv2d(inp, oup, 1, 1, 0, bias=False),
-        nn.BatchNorm2d(oup),
-        h_swish()
-    )
-
-
-class InvertedResidual(nn.Module):
-    def __init__(self, inp, hidden_dim, oup, kernel_size, stride, use_se, use_hs):
-        super(InvertedResidual, self).__init__()
-        assert stride in [1, 2]
-
-        self.identity = stride == 1 and inp == oup
-
-        if inp == hidden_dim:
-            self.conv = nn.Sequential(
-                # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
-                          bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                h_swish() if use_hs else nn.ReLU(inplace=True),
-                # Squeeze-and-Excite
-                SELayer(hidden_dim) if use_se else nn.Identity(),
-                # pw-linear
-                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(oup),
-            )
-        else:
-            self.conv = nn.Sequential(
-                # pw
-                nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                h_swish() if use_hs else nn.ReLU(inplace=True),
-                # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
-                          bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                # Squeeze-and-Excite
-                SELayer(hidden_dim) if use_se else nn.Identity(),
-                h_swish() if use_hs else nn.ReLU(inplace=True),
-                # pw-linear
-                nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
-                nn.BatchNorm2d(oup),
-            )
-
-    def forward(self, x):
-        if self.identity:
-            return x + self.conv(x)
-        else:
-            return self.conv(x)
+from mobilenetv3.encoder import MobileNetV3VanillaEncoder, MobileNetV3Decoder, get_encoder
+from mobilenetv3.layers import _make_divisible, conv_3x3_bn, InvertedResidual, conv_1x1_bn, h_swish
 
 
 class MobileNetV3(nn.Module):
-    def __init__(self, cfgs, mode, num_classes=1000, width_mult=1., split_position=1, bottleneck_ratio=-1):
+    def __init__(self, cfgs, mode, num_classes=1000, width_mult=1.,
+                 split_position=1, bottleneck_ratio=-1, encoder="vanilla"):
         super(MobileNetV3, self).__init__()
         # setting of inverted residual blocks
         self.cfgs = cfgs
@@ -169,9 +54,9 @@ class MobileNetV3(nn.Module):
         encoder_layers = nn.Sequential(*list(self.features[:self.split_position]))
         decoder_layers = nn.Sequential(*list(self.features[self.split_position:]))
 
-        self.encoder = MobileNetV3VanillaEncoder(encoder_layers,
-                                                 original_channels=original_channels,
-                                                 bottleneck_ratio=bottleneck_ratio)
+        self.encoder = get_encoder(encoder)(encoder_layers,
+                                            original_channels=original_channels,
+                                            bottleneck_ratio=bottleneck_ratio)
         self.decoder = MobileNetV3Decoder(layers=decoder_layers,
                                           conv=self.conv,
                                           avgpool=self.avgpool,
