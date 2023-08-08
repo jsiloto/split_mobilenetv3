@@ -71,7 +71,7 @@ class MobileNetV3(nn.Module):
         output = self.encoder(x)
         y_hat = self.decoder(output['y_hat'])
         output['y_hat'] = y_hat
-        return x
+        return output
 
     def _initialize_weights(self):
         for m in self.modules():
@@ -88,15 +88,15 @@ class MobileNetV3(nn.Module):
                 m.bias.data.zero_()
 
         # Dong et al 2022 initialization
-        def dong_init(block):
-            for m in block.modules():
-                if isinstance(m, nn.Conv2d):
-                    n = m.kernel_size[0] * m.kernel_size[1] * math.sqrt(m.out_channels * m.in_channels)
-                    m.weight.data.normal_(0, math.sqrt(2. / n))
-
-        if self.split_position > 0:
-            dong_init(self.encoder.layers[-1])
-            dong_init(self.decoder.layers[0])
+        # def dong_init(block):
+        #     for m in block.modules():
+        #         if isinstance(m, nn.Conv2d):
+        #             n = m.kernel_size[0] * m.kernel_size[1] * math.sqrt(m.out_channels * m.in_channels)
+        #             m.weight.data.normal_(0, math.sqrt(2. / n))
+        #
+        # if self.split_position > 0:
+        #     dong_init(self.encoder.layers[-1])
+        #     dong_init(self.decoder.layers[0])
 
 
 def mobilenetv3_large(**kwargs):

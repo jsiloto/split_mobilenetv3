@@ -64,7 +64,7 @@ def train_classifier(dataset_name, model_config):
 
     # optionally resume from a checkpoint
     checkpoint_path = model_config['checkpoint']
-    model.codec.entropy_bottleneck.update()
+    model.encoder.codec.entropy_bottleneck.update()
     model, start_epoch, best_prec1 = resume_model(model, checkpoint_path, optimizer, best=False)
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
@@ -151,9 +151,9 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         # compute output
         output = model(input.to('cuda'))
         y_hat = output['y_hat']
-        likelihoods = output['likelihoods']
+        likelihoods = output['likelihoods']['y'].log2()
         lloss = -likelihoods.mean()
-        loss = criterion(y_hat, target) + lloss
+        loss = criterion(y_hat, target)
         # measure accuracy and record loss
         prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
