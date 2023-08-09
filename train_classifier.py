@@ -2,32 +2,21 @@
 Training script for ImageNet
 Copyright (c) Wei YANG, 2017
 '''
-import argparse
 import json
 import os
-import random
 import shutil
 import time
-import warnings
-import yaml
 
 import torch
 import torch.nn as nn
 import torch.nn.parallel
-import torch.backends.cudnn as cudnn
-import torch.distributed as dist
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-import torchvision.models as models
-from math import cos, pi, ceil
 from dataset import get_dataset
 from eval_classifier import validate
-from mobilenetv3 import mobilenetv3
 from model import get_model, resume_model
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import Bar, Logger, AverageMeter, accuracy, savefig
 
 
 
@@ -51,34 +40,28 @@ class LRAdjust:
             param_group['lr'] = lr
 
 
-def train_classifier(dataset_name, model_config):
-
-
-    d = get_dataset(dataset_name, model_config['batch_size'])
-
-    model = get_model(model_config, num_classes=d.num_classes)
+def train_classifier(configs):
+    d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
+    model = get_model(configs['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.SGD(model.parameters(), model_config['lr'], momentum=0.9, weight_decay=1e-4)
-    adjuster = LRAdjust(model_config)
+    optimizer = torch.optim.SGD(model.parameters(), configs['hyper']['lr'], momentum=0.9, weight_decay=1e-4)
+    adjuster = LRAdjust(configs['model'])
 
     # optionally resume from a checkpoint
-    checkpoint_path = model_config['checkpoint']
-    model.encoder.codec.entropy_bottleneck.update()
+    checkpoint_path = configs['checkpoint']
     model, start_epoch, best_prec1 = resume_model(model, checkpoint_path, optimizer, best=False)
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
     logger.set_names(['Epoch', 'Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
     ########################################################################################
-    metadata = {}
-    metadata['dataset_name'] = dataset_name
-    metadata['model'] = model_config
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
-        json.dump(metadata, f)
+        json.dump(configs, f)
 
-    for epoch in range(start_epoch, model_config['epochs']):
-        print('\nEpoch: [%d | %d]' % (epoch + 1, model_config['epochs']))
+    num_epochs = configs['hyper']['epochs']
+    for epoch in range(start_epoch, num_epochs):
+        print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
         train_loss, train_acc = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
         val_loss, prec1, top1classes = validate(d.val_loader, d.val_loader_len, model, criterion)
         lr = optimizer.param_groups[0]['lr']
@@ -110,14 +93,14 @@ def train_classifier(dataset_name, model_config):
     print("Classes Accuracy")
     print(top1classes)
 
-    metadata['results'] = {}
-    metadata['results']["prec1"] = prec1
-    metadata['results']["best_prec1classes"] = top1classes
-    metadata['results']["val_samples"] = d.val_samples
-    metadata['results']["train_samples"] = d.train_samples
+    results = {}
+    results["prec1"] = prec1
+    results["best_prec1classes"] = top1classes
+    results["val_samples"] = d.val_samples
+    results["train_samples"] = d.train_samples
 
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
-        json.dump(metadata, f)
+        json.dump(results, f)
 
 
 
@@ -170,21 +153,10 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         end = time.time()
 
         # plot progress
-        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | ' \
-                     'Batch: {bt:.3f}s | Total: {total:} |' \
-                     ' ETA: {eta:} | Loss: {loss:.4f} | ' \
-                     'top1: {top1: .4f} | top5: {top5: .4f} | LLos: {lloss: .4f}'.format(
-            batch=i + 1,
-            size=train_loader_len,
-            data=data_time.avg,
-            bt=batch_time.avg,
-            total=bar.elapsed_td,
-            eta=bar.eta_td,
-            loss=losses.avg,
-            top1=top1.avg,
-            top5=top5.avg,
-            lloss=lloss
-        )
+        bar.suffix = f'({i + 1}/{train_loader_len}) Data: {data_time.avg:.3f}s | ' \
+                     f'Batch: {batch_time.avg:.3f}s | Total: {bar.elapsed_td:} |' \
+                     f' ETA: {bar.eta_td:} | Loss: {losses.avg:.4f} | ' \
+                     f'top1: {top1.avg: .4f} | top5: {top5.avg: .4f} | LLos: {lloss: .4f}'
         bar.next()
     bar.finish()
     return (losses.avg, top1.avg)

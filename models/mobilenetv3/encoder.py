@@ -3,8 +3,6 @@ from compressai.latent_codecs import EntropyBottleneckLatentCodec
 from compressai.layers import GDN1
 from torch import nn
 
-from mobilenetv3.layers import h_swish, h_sigmoid, InvertedResidual
-
 
 def get_encoder(encoder: str):
     encoder_dict = {
