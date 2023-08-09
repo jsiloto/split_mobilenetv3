@@ -1,6 +1,11 @@
 import argparse
 import os
+import shutil
+
 import yaml
+
+from utils import mkdir_p
+
 
 def load_config(yaml_path):
     with open(yaml_path) as f:
@@ -21,6 +26,13 @@ def parse_config(args):
                   + args.hyper.split("/")[-1].split(".")[0]
 
     config['checkpoint'] = os.path.join(args.project, config_name, args.name)
+
+    if args.clean:
+        print("Cleaning checkpoint folder")
+        shutil.rmtree(config['checkpoint'])
+    if not os.path.isdir(config['checkpoint']):
+        mkdir_p(config['checkpoint'])
+
     return config
 
 def add_config_args(parser: argparse.ArgumentParser):
@@ -32,6 +44,7 @@ def add_config_args(parser: argparse.ArgumentParser):
                         help='checkpoint project path')
     parser.add_argument('-n', '--name', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
+    parser.add_argument('--clean', action='store_true', help='clean checkpoint folder')
 
 def get_config_from_args(parser: argparse.ArgumentParser):
     add_config_args(parser)

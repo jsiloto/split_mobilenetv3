@@ -4,7 +4,7 @@ from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 
 def validate(val_loader, val_loader_len, model, criterion, title='Val'):
-    num_classes = model.classifier[3].out_features
+    num_classes = model.num_classes
     bar = Bar(title, max=val_loader_len)
 
     batch_time = AverageMeter()
@@ -12,6 +12,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    num_bytes = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
@@ -28,9 +29,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
             # compute output
             output = model(input.to('cuda'))
             y_hat = output['y_hat']
-            strings = output['strings']
             loss = criterion(y_hat, target)
-            num_bytes = sum(len(s) for s in strings[0])/len(strings[0])
 
         # measure accuracy and record loss
         for i in range(len(target)):
@@ -43,25 +42,17 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
         losses.update(loss.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
+        num_bytes.update(output['num_bytes'], n=1)
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
         # plot progress
-        bar.suffix = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:}' \
-                     ' | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .3f} | top5: {top5: .3f} | Bytes: {num_bytes: .1f}'.format(
-            batch=i + 1,
-            size=val_loader_len,
-            data=data_time.avg,
-            bt=batch_time.avg,
-            total=bar.elapsed_td,
-            eta=bar.eta_td,
-            loss=losses.avg,
-            top1=top1.avg,
-            top5=top5.avg,
-            num_bytes=num_bytes,
-        )
+        bar.suffix = f'({i + 1}/{val_loader_len}) Data: {data_time.avg:.3f}s |' \
+                     f' Batch: {batch_time.avg:.3f}s | Total: {bar.elapsed_td:}' \
+                     f' | ETA: {bar.eta_td:} | Loss: {losses.avg:.4f} | top1: {top1.avg: .3f}' \
+                     f' | top5: {top5.avg: .3f} | Bytes: {num_bytes.avg: .1f}'
         bar.next()
     bar.finish()
     top1classes = [c.avg for c in class_prec]

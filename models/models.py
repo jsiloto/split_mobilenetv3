@@ -1,6 +1,7 @@
 import os
 
 import torch
+from torch import nn
 
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
 from utils import mkdir_p
@@ -13,21 +14,34 @@ def load_mobilenetv3(model_config, num_classes=10):
         state_dict = torch.load('models/mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
         state_dict.pop("classifier.3.weight")
         state_dict.pop("classifier.3.bias")
-        model.load_state_dict(state_dict, strict=False)
+        for k, v in state_dict.items():
+            print(k)
+        model.load_state_dict(state_dict, strict=True)
 
     model = model.cuda()
     return model
 
 
-def identity(base_model, **kwargs):
-    return base_model
+class MobilenetV3Regular(nn.Module):
+    def __init__(self, base_model, **kwargs):
+        super(MobilenetV3Regular, self).__init__()
+        self.base_model = base_model
+        self.num_classes = base_model.classifier[3].out_features
+
+    def forward(self, x):
+        output = {'y_hat': self.base_model(x),
+                  'strings': None,
+                  'likelihoods': None,
+                  'num_bytes': 0.0,
+                  'reg_loss': 0.0}
+        return output
+
 
 def get_model(base_model_config, model_config, num_classes=10):
-
     base_model = load_mobilenetv3(base_model_config, num_classes=num_classes)
 
     model_dict = {
-        "regular": identity,
+        "regular": MobilenetV3Regular,
     }
 
     model = model_dict[model_config['name']](**model_config, base_model=base_model)
@@ -61,6 +75,7 @@ def load_checkpoint(checkpoint_path, best=False):
     else:
         return None
 
+
 def resume_model(model, checkpoint_path, best=False):
     checkpoint = load_checkpoint(checkpoint_path, best)
     if checkpoint is None:
@@ -70,6 +85,7 @@ def resume_model(model, checkpoint_path, best=False):
 
     return model
 
+
 def resume_optimizer(optimizer, checkpoint_path, best=False):
     checkpoint = load_checkpoint(checkpoint_path, best)
     if checkpoint is None:
@@ -77,6 +93,7 @@ def resume_optimizer(optimizer, checkpoint_path, best=False):
     else:
         optimizer.load_state_dict(checkpoint['optimizer'])
     return optimizer
+
 
 def resume_training_state(checkpoint_path, best=False):
     metadata = {
@@ -91,4 +108,3 @@ def resume_training_state(checkpoint_path, best=False):
     else:
         metadata = checkpoint['metadata']
     return metadata
-

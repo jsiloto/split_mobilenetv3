@@ -27,7 +27,7 @@ class LRAdjust:
         self.epochs = config['epochs']
     def adjust(self, optimizer, epoch, iteration, num_iter):
         gamma = 0.1
-        warmup_epoch = 5 if self.warmup else 0
+        warmup_epoch = 10 if self.warmup else 0
         warmup_iter = warmup_epoch * num_iter
         current_iter = iteration + epoch * num_iter
         max_iter = self.epochs * num_iter
@@ -54,6 +54,7 @@ def train_classifier(configs):
     optimizer = resume_optimizer(optimizer, checkpoint_path, best=False)
     training_state = resume_training_state(checkpoint_path, best=False)
     start_epoch = training_state['epoch']
+    print(f"=> start epoch {start_epoch}")
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
     logger.set_names(['Epoch', 'Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
@@ -69,20 +70,16 @@ def train_classifier(configs):
 
         # append logger file
         logger.append([epoch, lr, train_loss, val_loss, train_acc, prec1])
-
-        is_best = prec1 > best_prec1
+        training_state['epoch'] = epoch + 1
+        training_state['prec1'] = prec1
+        is_best = prec1 > training_state['best_prec1']
         if is_best:
-            best_prec1 = prec1
-            best_prec1classes = top1classes
+            training_state['best_prec1'] = prec1
+            training_state['best_prec1classes'] = top1classes
 
-        metadata = {
-            'epoch': epoch + 1,
-            'best_prec1': best_prec1,
-            'best_prec1classes': best_prec1classes,
-        }
 
         save_checkpoint({
-            'metadata': metadata,
+            'metadata': training_state,
             'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
@@ -123,8 +120,8 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top1 = AverageMeter()
     top5 = AverageMeter()
+    top1 = AverageMeter()
 
     # switch to train mode
     model.train()
@@ -140,14 +137,15 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         # compute output
         output = model(input.to('cuda'))
         y_hat = output['y_hat']
-        likelihoods = output['likelihoods']['y'].log2()
-        lloss = -likelihoods.mean()
+        # likelihoods = output['likelihoods']['y'].log2()
+        # lloss = -likelihoods.mean()
         loss = criterion(y_hat, target)
         # measure accuracy and record loss
         prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
+
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -162,7 +160,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         bar.suffix = f'({i + 1}/{train_loader_len}) Data: {data_time.avg:.3f}s | ' \
                      f'Batch: {batch_time.avg:.3f}s | Total: {bar.elapsed_td:} |' \
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.4f} | ' \
-                     f'top1: {top1.avg: .4f} | top5: {top5.avg: .4f} | LLos: {lloss: .4f}'
+                     f'top1: {top1.avg: .4f} | top5: {top5.avg: .4f}'
         bar.next()
     bar.finish()
     return (losses.avg, top1.avg)
