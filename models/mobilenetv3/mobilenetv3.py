@@ -9,11 +9,11 @@ import math
 
 __all__ = ['mobilenetv3_large', 'mobilenetv3_small']
 
-from models.models import _make_divisible, conv_3x3_bn, InvertedResidual, conv_1x1_bn, h_swish
+from models.mobilenetv3.layers import _make_divisible, conv_3x3_bn, InvertedResidual, conv_1x1_bn, h_swish
 
 
 class MobileNetV3(nn.Module):
-    def __init__(self, cfgs, mode, num_classes=1000, width_mult=1.):
+    def __init__(self, cfgs, mode, num_classes=1000, width_mult=1., **kwargs):
         super(MobileNetV3, self).__init__()
         # setting of inverted residual blocks
         self.cfgs = cfgs

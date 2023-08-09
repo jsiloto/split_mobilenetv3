@@ -4,6 +4,6 @@ base_model: {
 }
 
 model: {
-  model_name: 'regular',
-  model_params: {}
+  name: 'regular',
+  params: {}
 }

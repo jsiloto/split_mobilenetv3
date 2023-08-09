@@ -15,7 +15,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 from dataset import get_dataset
 from eval_classifier import validate
-from model import get_model, resume_model
+from models.models import get_model, resume_model, resume_optimizer, resume_training_state
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
 
 
@@ -42,22 +42,23 @@ class LRAdjust:
 
 def train_classifier(configs):
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
-    model = get_model(configs['model'], num_classes=d.num_classes)
+    model = get_model(configs['base_model'], configs['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.SGD(model.parameters(), configs['hyper']['lr'], momentum=0.9, weight_decay=1e-4)
-    adjuster = LRAdjust(configs['model'])
+    adjuster = LRAdjust(configs['hyper'])
 
     # optionally resume from a checkpoint
     checkpoint_path = configs['checkpoint']
-    model, start_epoch, best_prec1 = resume_model(model, checkpoint_path, optimizer, best=False)
+    model = resume_model(model, checkpoint_path, best=False)
+    optimizer = resume_optimizer(optimizer, checkpoint_path, best=False)
+    training_state = resume_training_state(checkpoint_path, best=False)
+    start_epoch = training_state['epoch']
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
     logger.set_names(['Epoch', 'Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
     ########################################################################################
-    with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
-        json.dump(configs, f)
 
     num_epochs = configs['hyper']['epochs']
     for epoch in range(start_epoch, num_epochs):
@@ -73,11 +74,16 @@ def train_classifier(configs):
         if is_best:
             best_prec1 = prec1
             best_prec1classes = top1classes
-        save_checkpoint({
+
+        metadata = {
             'epoch': epoch + 1,
-            'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
             'best_prec1classes': best_prec1classes,
+        }
+
+        save_checkpoint({
+            'metadata': metadata,
+            'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
 
@@ -85,7 +91,7 @@ def train_classifier(configs):
     logger.plot()
     savefig(os.path.join(checkpoint_path, 'log.eps'))
 
-    model, epoch, best_prec1 = resume_model(model, checkpoint_path, optimizer, best=True)
+    model = resume_model(model, checkpoint_path, best=True)
     validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set')
     _, prec1, top1classes = validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set')
     print('Best accuracy:')
@@ -160,6 +166,3 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         bar.next()
     bar.finish()
     return (losses.avg, top1.avg)
-
-
-

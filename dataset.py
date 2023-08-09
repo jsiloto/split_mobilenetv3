@@ -42,7 +42,9 @@ def get_transforms(split='train', input_size=(96, 96), jpeg_quality=None):
     return transform
 
 
-def get_dataset(dataset_name, batch_size, jpeg_quality=None, workers=8):
+def get_dataset(dataset_config, batch_size, jpeg_quality=None, workers=8):
+    dataset_name = dataset_config['name']
+
     num_classes = 0
     if dataset_name == "stl10":
         input_shape = (96, 96)
