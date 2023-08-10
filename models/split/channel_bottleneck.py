@@ -7,24 +7,33 @@ from models.mobilenetv3.mobilenetv3 import MobileNetV3
 
 
 class MV3ChannelBottleneck(nn.Module):
-    def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float, split_position: int):
+    def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float, split_position: int, **kwargs):
+        super().__init__()
         self.base_model = base_model
         self.split_position = split_position
-        original_channels = self.base_model.cfgs[self.split_position][2]
-        encoder_layers = nn.Sequential(*list(self.base_model.features[:self.split_position]))
-        decoder_layers = nn.Sequential(*list(self.base_model.features[self.split_position:]))
+        self.num_classes = base_model.classifier[3].out_features
+        original_channels = base_model.cfgs[self.split_position][2]
+        encoder_layers = nn.Sequential(*list(base_model.features[:self.split_position]))
+        decoder_layers = nn.Sequential(*list(base_model.features[self.split_position:]))
 
         self.encoder = MobileNetV3VanillaEncoder(encoder_layers,
                                                  original_channels=original_channels,
                                                  bottleneck_ratio=bottleneck_ratio)
         self.decoder = MobileNetV3Decoder(layers=decoder_layers,
-                                          conv=self.conv,
-                                          avgpool=self.avgpool,
-                                          classifier=self.classifier,
+                                          conv=base_model.conv,
+                                          avgpool=base_model.avgpool,
+                                          classifier=base_model.classifier,
                                           codec=self.encoder.codec,
                                           original_channels=original_channels,
                                           bottleneck_ratio=bottleneck_ratio)
 
+
+    def forward(self, x):
+        output = self.encoder(x)
+        if not self.training:
+            output['num_bytes'] = len(output['strings'])
+        output['y_hat'] = self.decoder(output['y_hat'])
+        return output
 
 
 
@@ -36,6 +45,7 @@ class MobileNetV3VanillaEncoder(nn.Module):
         self.original_channels = original_channels
         self.bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
         self.codec = EntropyBottleneckLatentCodec(channels=self.bottleneck_channels)
+        self.codec.entropy_bottleneck.update()
 
     def forward(self, x):
         x = self.layers(x)

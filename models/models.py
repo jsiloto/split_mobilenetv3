@@ -15,8 +15,6 @@ def load_mobilenetv3(model_config, num_classes=10):
         state_dict = torch.load('models/mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
         state_dict.pop("classifier.3.weight")
         state_dict.pop("classifier.3.bias")
-        for k, v in state_dict.items():
-            print(k)
         model.load_state_dict(state_dict, strict=False)
 
     model = model.cuda()
@@ -94,6 +92,6 @@ def get_model(base_model_config, model_config, num_classes=10):
         "channel_bottleneck": MV3ChannelBottleneck,
     }
 
-    model = model_dict[model_config['name']](**model_config, base_model=base_model)
+    model = model_dict[model_config['name']](**model_config, base_model=base_model).to('cuda')
 
     return model
