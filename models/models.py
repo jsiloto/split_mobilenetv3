@@ -5,6 +5,7 @@ from torch import nn
 
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
 from models.split.channel_bottleneck import MV3ChannelBottleneck
+from models.split.entropy_bottleneck import MV3EntropyBottleneck
 from utils import mkdir_p
 
 
@@ -90,6 +91,7 @@ def get_model(base_model_config, model_config, num_classes=10):
     model_dict = {
         "regular": MobilenetV3Regular,
         "channel_bottleneck": MV3ChannelBottleneck,
+        "entropy_bottleneck": MV3EntropyBottleneck,
     }
 
     model = model_dict[model_config['name']](**model_config, base_model=base_model).to('cuda')

@@ -29,7 +29,7 @@ def parse_config(args):
 
     if args.clean:
         print("Cleaning checkpoint folder")
-        shutil.rmtree(config['checkpoint'])
+        shutil.rmtree(config['checkpoint'], ignore_errors=True)
     if not os.path.isdir(config['checkpoint']):
         mkdir_p(config['checkpoint'])
 
