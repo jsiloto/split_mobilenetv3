@@ -9,7 +9,6 @@ from configs import get_config_from_args
 from train_classifier import train_classifier
 from utils import mkdir_p
 
-
 def main():
     parser = argparse.ArgumentParser(description='Train Model')
     configs = get_config_from_args(parser)

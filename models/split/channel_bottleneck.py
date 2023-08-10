@@ -37,6 +37,7 @@ class MV3ChannelBottleneck(nn.Module):
         x = self.encoder(x)
         output['num_bytes'] = x.shape[1]*x.shape[2]*x.shape[3]
         output['y_hat'] = self.decoder(x)
+        output['compression_loss'] = 0.0
         return output
 
 

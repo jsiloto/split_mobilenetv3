@@ -120,6 +120,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
+    losses_c = AverageMeter()
     top5 = AverageMeter()
     top1 = AverageMeter()
 
@@ -137,17 +138,20 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         # compute output
         output = model(input.to('cuda'))
         y_hat = output['y_hat']
+        compression_loss = output['compression_loss']
         # likelihoods = output['likelihoods']['y'].log2()
         # lloss = -likelihoods.mean()
         loss = criterion(y_hat, target)
         # measure accuracy and record loss
         prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
+        losses_c.update(compression_loss, input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
 
 
         # compute gradient and do SGD step
+        loss += compression_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -157,10 +161,10 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         end = time.time()
 
         # plot progress
-        bar.suffix = f'({i + 1}/{train_loader_len}) Data: {data_time.avg:.3f}s | ' \
-                     f'Batch: {batch_time.avg:.3f}s | Total: {bar.elapsed_td:} |' \
-                     f' ETA: {bar.eta_td:} | Loss: {losses.avg:.4f} | ' \
-                     f'top1: {top1.avg: .4f} | top5: {top5.avg: .4f}'
+        bar.suffix = f'({i + 1}/{train_loader_len}) Data: {data_time.avg:.2f}s | ' \
+                     f'Batch: {batch_time.avg:.2f}s | Total: {bar.elapsed_td:} |' \
+                     f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
+                     f'top1: {top1.avg: .2f} | top5: {top5.avg: .2f}'
         bar.next()
     bar.finish()
     return (losses.avg, top1.avg)

@@ -8,11 +8,13 @@ from models.split.channel_bottleneck import MobileNetV3Decoder
 
 
 class MV3EntropyBottleneck(nn.Module):
-    def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float, split_position: int, **kwargs):
+    def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float,
+                 split_position: int, compression_parameter=0.0, **kwargs):
         super().__init__()
         self.base_model = base_model
         self.split_position = split_position
         self.num_classes = base_model.classifier[3].out_features
+        self.compression_parameter = compression_parameter
         original_channels = base_model.cfgs[self.split_position][2]
         encoder_layers = nn.Sequential(*list(base_model.features[:self.split_position]))
         decoder_layers = nn.Sequential(*list(base_model.features[self.split_position:]))
@@ -35,10 +37,12 @@ class MV3EntropyBottleneck(nn.Module):
     def forward(self, x):
         output = {}
         output = self.encoder(x)
-        if not self.training:
+        if self.training:
+            output['compression_loss'] = -self.compression_parameter * output['likelihoods']['y'].log2().mean()
+        else:
             output['num_bytes'] = sum([len(s) for s in output['strings'][0]])/len(output['strings'][0])
         output['y_hat'] = self.decoder(output['y_hat'])
-        output['compression_loss'] = output['likelihoods'].log2().mean()
+
         return output
 
 
