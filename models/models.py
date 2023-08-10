@@ -48,21 +48,6 @@ def get_model(base_model_config, model_config, num_classes=10):
 
     return model
 
-
-# def get_model(model_config, num_classes=10):
-#     # create model
-#     model_params = model_config['model_params']
-#     model = mobilenetv3.mobilenetv3_large(num_classes=num_classes, width_mult=1.0,
-#                                           **model_params)
-#     if model_config['pretrained']:
-#         state_dict = torch.load('models/mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
-#         state_dict.pop("classifier.3.weight")
-#         state_dict.pop("classifier.3.bias")
-#         model.load_state_dict(state_dict, strict=False)
-#
-#     model = model.cuda()
-#     return model
-
 def load_checkpoint(checkpoint_path, best=False):
     # if not os.path.isdir(checkpoint_path):
     #     mkdir_p(checkpoint_path)

@@ -5,3 +5,5 @@ split5/
 checkpoints/
 *.zip
 __pycache__/
+venv/
+seed/
