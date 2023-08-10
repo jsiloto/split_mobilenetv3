@@ -16,7 +16,7 @@ def load_mobilenetv3(model_config, num_classes=10):
         state_dict.pop("classifier.3.bias")
         for k, v in state_dict.items():
             print(k)
-        model.load_state_dict(state_dict, strict=True)
+        model.load_state_dict(state_dict, strict=False)
 
     model = model.cuda()
     return model

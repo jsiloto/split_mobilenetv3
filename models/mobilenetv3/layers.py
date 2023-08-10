@@ -20,6 +20,7 @@ def _make_divisible(v, divisor, min_value=None):
         new_v += divisor
     return new_v
 
+
 class h_sigmoid(nn.Module):
     def __init__(self, inplace=True):
         super(h_sigmoid, self).__init__()
@@ -43,10 +44,10 @@ class SELayer(nn.Module):
         super(SELayer, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
-            nn.Linear(channel, _make_divisible(channel // reduction, 8)),
-            nn.ReLU(inplace=True),
-            nn.Linear(_make_divisible(channel // reduction, 8), channel),
-            h_sigmoid()
+                nn.Linear(channel, _make_divisible(channel // reduction, 8)),
+                nn.ReLU(inplace=True),
+                nn.Linear(_make_divisible(channel // reduction, 8), channel),
+                h_sigmoid()
         )
 
     def forward(self, x):
@@ -82,11 +83,9 @@ class InvertedResidual(nn.Module):
         if inp == hidden_dim:
             self.conv = nn.Sequential(
                 # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
-                          bias=False),
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim, bias=False),
                 nn.BatchNorm2d(hidden_dim),
-                # h_swish() if use_hs else nn.ReLU(inplace=True),
-                GDN1(hidden_dim),
+                h_swish() if use_hs else nn.ReLU(inplace=True),
                 # Squeeze-and-Excite
                 SELayer(hidden_dim) if use_se else nn.Identity(),
                 # pw-linear
@@ -98,16 +97,13 @@ class InvertedResidual(nn.Module):
                 # pw
                 nn.Conv2d(inp, hidden_dim, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(hidden_dim),
-                # h_swish() if use_hs else nn.ReLU(inplace=True),
-                GDN1(hidden_dim),
+                h_swish() if use_hs else nn.ReLU(inplace=True),
                 # dw
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim,
-                          bias=False),
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size, stride, (kernel_size - 1) // 2, groups=hidden_dim, bias=False),
                 nn.BatchNorm2d(hidden_dim),
                 # Squeeze-and-Excite
                 SELayer(hidden_dim) if use_se else nn.Identity(),
-                # h_swish() if use_hs else nn.ReLU(inplace=True),
-                GDN1(hidden_dim),
+                h_swish() if use_hs else nn.ReLU(inplace=True),
                 # pw-linear
                 nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
                 nn.BatchNorm2d(oup),
@@ -118,4 +114,5 @@ class InvertedResidual(nn.Module):
             return x + self.conv(x)
         else:
             return self.conv(x)
+
 
