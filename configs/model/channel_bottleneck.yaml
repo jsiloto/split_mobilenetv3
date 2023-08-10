@@ -6,5 +6,5 @@ base_model: {
 model: {
   name: 'channel_bottleneck',
   split_position: 5,
-  bottleneck_ratio: 1.0
+  bottleneck_ratio: 0.1
 }

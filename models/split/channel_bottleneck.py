@@ -16,6 +16,10 @@ class MV3ChannelBottleneck(nn.Module):
         encoder_layers = nn.Sequential(*list(base_model.features[:self.split_position]))
         decoder_layers = nn.Sequential(*list(base_model.features[self.split_position:]))
 
+        print("Building MV3ChannelBottleneck with split position: ", self.split_position)
+        print("Original channels: ", original_channels)
+        print("Bottleneck channels: ", int(bottleneck_ratio * original_channels))
+
         self.encoder = MobileNetV3VanillaEncoder(encoder_layers,
                                                  original_channels=original_channels,
                                                  bottleneck_ratio=bottleneck_ratio)
@@ -29,10 +33,10 @@ class MV3ChannelBottleneck(nn.Module):
 
 
     def forward(self, x):
-        output = self.encoder(x)
-        if not self.training:
-            output['num_bytes'] = len(output['strings'])
-        output['y_hat'] = self.decoder(output['y_hat'])
+        output = {}
+        x = self.encoder(x)
+        output['num_bytes'] = x.shape[1]*x.shape[2]*x.shape[3]
+        output['y_hat'] = self.decoder(x)
         return output
 
 
@@ -53,10 +57,6 @@ class MobileNetV3VanillaEncoder(nn.Module):
             x[:, self.bottleneck_channels:, ::] = 0
             x = x[:, :self.bottleneck_channels, ::]
 
-        if self.training:
-            x = self.codec(x)
-        else:
-            x = self.codec.compress(x)
         return x
 
 
