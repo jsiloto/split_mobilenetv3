@@ -1,9 +1,0 @@
-lr: 0.01
-epochs: 70
-batch_size: 32
-warmup: True
-pretrained: True
-model_params:
-  split_position: 5
-  bottleneck_ratio: 1.0
-  encoder: "gdn"

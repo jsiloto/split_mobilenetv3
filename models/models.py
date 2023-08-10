@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
+from models.split.channel_bottleneck import MV3ChannelBottleneck
 from utils import mkdir_p
 
 
@@ -36,18 +37,7 @@ class MobilenetV3Regular(nn.Module):
                   'reg_loss': 0.0}
         return output
 
-
-def get_model(base_model_config, model_config, num_classes=10):
-    base_model = load_mobilenetv3(base_model_config, num_classes=num_classes)
-
-    model_dict = {
-        "regular": MobilenetV3Regular,
-    }
-
-    model = model_dict[model_config['name']](**model_config, base_model=base_model)
-
-    return model
-
+#################################### CHeckpointing ####################################
 def load_checkpoint(checkpoint_path, best=False):
     # if not os.path.isdir(checkpoint_path):
     #     mkdir_p(checkpoint_path)
@@ -93,3 +83,17 @@ def resume_training_state(checkpoint_path, best=False):
     else:
         metadata = checkpoint['metadata']
     return metadata
+
+
+#################################### Model Dicts ####################################
+def get_model(base_model_config, model_config, num_classes=10):
+    base_model = load_mobilenetv3(base_model_config, num_classes=num_classes)
+
+    model_dict = {
+        "regular": MobilenetV3Regular,
+        "channel_bottleneck": MV3ChannelBottleneck,
+    }
+
+    model = model_dict[model_config['name']](**model_config, base_model=base_model)
+
+    return model

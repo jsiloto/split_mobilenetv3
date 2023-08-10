@@ -7,9 +7,26 @@ from models.mobilenetv3.mobilenetv3 import MobileNetV3
 
 
 class MV3ChannelBottleneck(nn.Module):
-    def __init__(self, base_model: MobileNetV3):
+    def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float, split_position: int):
         self.base_model = base_model
-        self.encoder = MobileNetV3VanillaEncoder()
+        self.split_position = split_position
+        original_channels = self.base_model.cfgs[self.split_position][2]
+        encoder_layers = nn.Sequential(*list(self.base_model.features[:self.split_position]))
+        decoder_layers = nn.Sequential(*list(self.base_model.features[self.split_position:]))
+
+        self.encoder = MobileNetV3VanillaEncoder(encoder_layers,
+                                                 original_channels=original_channels,
+                                                 bottleneck_ratio=bottleneck_ratio)
+        self.decoder = MobileNetV3Decoder(layers=decoder_layers,
+                                          conv=self.conv,
+                                          avgpool=self.avgpool,
+                                          classifier=self.classifier,
+                                          codec=self.encoder.codec,
+                                          original_channels=original_channels,
+                                          bottleneck_ratio=bottleneck_ratio)
+
+
+
 
 class MobileNetV3VanillaEncoder(nn.Module):
     def __init__(self, layers: nn.Sequential, original_channels: int, bottleneck_ratio: float):
