@@ -14,6 +14,7 @@ def main():
     configs = get_config_from_args(parser)
     with open(os.path.join(configs['checkpoint'], 'metadata.json'), "w") as f:
         json.dump(configs, f)
+
     train_classifier(configs)
 
 if __name__ == '__main__':

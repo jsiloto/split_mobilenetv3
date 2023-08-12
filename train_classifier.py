@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import time
+import wandb
+import random
 
 import torch
 import torch.nn as nn
@@ -19,12 +21,19 @@ from models.models import get_model, resume_model, resume_optimizer, resume_trai
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
 
 
+def init_wandb(configs):
+    wandb.init(
+        project="concept_compression",
+        config=configs
+    )
+
 
 class LRAdjust:
     def __init__(self, config):
         self.lr = config['lr']
         self.warmup = config['warmup']
         self.epochs = config['epochs']
+
     def adjust(self, optimizer, epoch, iteration, num_iter):
         gamma = 0.1
         warmup_epoch = 10 if self.warmup else 0
@@ -52,8 +61,8 @@ def train_classifier(configs):
     checkpoint_path = configs['checkpoint']
     model = resume_model(model, checkpoint_path, best=False)
     optimizer = resume_optimizer(optimizer, checkpoint_path, best=False)
-    training_state = resume_training_state(checkpoint_path, best=False)
-    start_epoch = training_state['epoch']
+    summary = resume_training_state(checkpoint_path, best=False)
+    start_epoch = summary['epoch']
     print(f"=> start epoch {start_epoch}")
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
@@ -64,22 +73,24 @@ def train_classifier(configs):
     num_epochs = configs['hyper']['epochs']
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
-        train_loss, train_acc = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
-        val_loss, prec1, top1classes = validate(d.val_loader, d.val_loader_len, model, criterion)
+        train_summary = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
+        val_summary = validate(d.val_loader, d.val_loader_len, model, criterion)
+        summary.update(train_summary)
+        summary.update(val_summary)
         lr = optimizer.param_groups[0]['lr']
 
         # append logger file
-        logger.append([epoch, lr, train_loss, val_loss, train_acc, prec1])
-        training_state['epoch'] = epoch + 1
-        training_state['prec1'] = prec1
-        is_best = prec1 > training_state['best_prec1']
+        logger.append([epoch, lr, summary['train_loss'],
+                       summary['val_loss'], summary['train_top1'],
+                       summary['val_top1']])
+        summary['epoch'] = epoch + 1
+        is_best = summary['val_top1'] > summary['best_top1']
         if is_best:
-            training_state['best_prec1'] = prec1
-            training_state['best_prec1classes'] = top1classes
-
+            summary['best_top1'] = summary['val_top1']
+            summary['best_top1classes'] = summary['val_top1classes']
 
         save_checkpoint({
-            'metadata': training_state,
+            'metadata': summary,
             'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
@@ -98,7 +109,7 @@ def train_classifier(configs):
 
     results = {}
     results["prec1"] = prec1
-    results["best_prec1classes"] = top1classes
+    results["best_top1classes"] = top1classes
     results["val_samples"] = d.val_samples
     results["train_samples"] = d.train_samples
 
@@ -106,13 +117,12 @@ def train_classifier(configs):
         json.dump(results, f)
 
 
-
-
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+
 
 def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster, epoch):
     bar = Bar('Train', max=train_loader_len)
@@ -139,8 +149,6 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         output = model(input.to('cuda'))
         y_hat = output['y_hat']
         compression_loss = output['compression_loss']
-        # likelihoods = output['likelihoods']['y'].log2()
-        # lloss = -likelihoods.mean()
         loss = criterion(y_hat, target)
         # measure accuracy and record loss
         prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
@@ -148,7 +156,6 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         losses_c.update(compression_loss, input.size(0))
         top1.update(prec1.item(), input.size(0))
         top5.update(prec5.item(), input.size(0))
-
 
         # compute gradient and do SGD step
         loss += compression_loss
@@ -161,10 +168,17 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         end = time.time()
 
         # plot progress
-        bar.suffix = f'({i + 1}/{train_loader_len}) Data: {data_time.avg:.2f}s | ' \
-                     f'Batch: {batch_time.avg:.2f}s | Total: {bar.elapsed_td:} |' \
+        bar.suffix = f'({i + 1}/{train_loader_len})' \
+                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:} |' \
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
                      f'top1: {top1.avg: .2f} | top5: {top5.avg: .2f}'
         bar.next()
     bar.finish()
-    return (losses.avg, top1.avg)
+
+    summary = {
+        'train_loss': losses.avg,
+        'train_closs': losses_c.avg,
+        'train_acc': top1.avg,
+    }
+
+    return summary

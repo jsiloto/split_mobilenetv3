@@ -20,3 +20,5 @@ jupyter
 torch_tb_profiler
 h5py
 compressai @ git+https://github.com/InterDigitalInc/CompressAI.git@5b4aac0
+wandb
+gitpython

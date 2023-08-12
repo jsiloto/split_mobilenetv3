@@ -5,6 +5,7 @@ import shutil
 import yaml
 
 from utils import mkdir_p
+import git
 
 
 def load_config(yaml_path):
@@ -32,6 +33,10 @@ def parse_config(args):
         shutil.rmtree(config['checkpoint'], ignore_errors=True)
     if not os.path.isdir(config['checkpoint']):
         mkdir_p(config['checkpoint'])
+
+    repo = git.Repo(search_parent_directories=True)
+    sha = repo.head.object.hexsha
+    config['git_sha'] = sha
 
     return config
 

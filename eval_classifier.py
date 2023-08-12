@@ -49,12 +49,19 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
         end = time.time()
 
         # plot progress
-        bar.suffix = f'({i + 1}/{val_loader_len}) Data: {data_time.avg:.2f}s |' \
-                     f' Batch: {batch_time.avg:.2f}s | Total: {bar.elapsed_td:}' \
+        bar.suffix = f'({i + 1}/{val_loader_len}) ' \
+                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:}' \
                      f' | ETA: {bar.eta_td:} | Loss: {losses.avg:.2f} | top1: {top1.avg: .2f}' \
                      f' | top5: {top5.avg: .2f} | Bytes: {num_bytes.avg: .1f}'
         bar.next()
     bar.finish()
     top1classes = [c.avg for c in class_prec]
 
-    return (losses.avg, top1.avg, top1classes)
+    summary = {
+        'val_top1': top1.avg,
+        'val_top5': top5.avg,
+        'val_bytes': num_bytes.avg,
+        'val_top1classes': top1classes
+    }
+
+    return summary
