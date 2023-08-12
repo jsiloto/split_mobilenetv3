@@ -6,6 +6,6 @@ base_model: {
 model: {
   name: 'entropy_bottleneck',
   split_position: 5,
-  bottleneck_ratio: 0.5,
+  bottleneck_ratio: 1.0,
   compression_parameter: 10.0
 }

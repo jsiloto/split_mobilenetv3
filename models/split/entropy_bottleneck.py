@@ -1,5 +1,6 @@
 import torch
 from compressai.latent_codecs import EntropyBottleneckLatentCodec
+from compressai.entropy_models import EntropyBottleneck
 from compressai.layers import GDN1
 from torch import nn
 
@@ -54,7 +55,8 @@ class MobileNetV3VanillaEncoder(nn.Module):
         self.bottleneck_ratio = bottleneck_ratio
         self.original_channels = original_channels
         self.bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
-        self.codec = EntropyBottleneckLatentCodec(channels=self.bottleneck_channels)
+        entropy_bottleneck =  EntropyBottleneck(self.bottleneck_channels,  filters=(8, 8, 8, 8))
+        self.codec = EntropyBottleneckLatentCodec(entropy_bottleneck=entropy_bottleneck)
         self.codec.entropy_bottleneck.update()
 
     def forward(self, x):

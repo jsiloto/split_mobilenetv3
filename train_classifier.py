@@ -45,7 +45,7 @@ def train_classifier(configs):
     model = get_model(configs['base_model'], configs['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.SGD(model.parameters(), configs['hyper']['lr'], momentum=0.9, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), configs['hyper']['lr'], weight_decay=1e-4)
     adjuster = LRAdjust(configs['hyper'])
 
     # optionally resume from a checkpoint
