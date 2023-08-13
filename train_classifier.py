@@ -50,6 +50,7 @@ class LRAdjust:
 
 
 def train_classifier(configs):
+    init_wandb(configs)
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
     model = get_model(configs['base_model'], configs['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
@@ -95,27 +96,28 @@ def train_classifier(configs):
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
 
+        summary['step'] = epoch
+        wandb.log(summary)
+        wandb.save(checkpoint_path)
+
+
     logger.close()
     logger.plot()
     savefig(os.path.join(checkpoint_path, 'log.eps'))
 
     model = resume_model(model, checkpoint_path, best=True)
-    validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set')
-    _, prec1, top1classes = validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set')
+    final_summary = {}
+    final_summary.update(validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set'))
+    final_summary.update(validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set'))
     print('Best accuracy:')
-    print(prec1)
-    print("Classes Accuracy")
-    print(top1classes)
-
-    results = {}
-    results["prec1"] = prec1
-    results["best_top1classes"] = top1classes
-    results["val_samples"] = d.val_samples
-    results["train_samples"] = d.train_samples
+    print(final_summary['val_top1'])
+    print("Best Classes Accuracy")
+    print(final_summary['val_top1classes'])
 
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
-        json.dump(results, f)
+        json.dump(final_summary, f)
 
+    wandb.save(checkpoint_path)
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
@@ -131,8 +133,8 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     data_time = AverageMeter()
     losses = AverageMeter()
     losses_c = AverageMeter()
-    top5 = AverageMeter()
-    top1 = AverageMeter()
+    top5meter = AverageMeter()
+    top1meter = AverageMeter()
 
     # switch to train mode
     model.train()
@@ -151,11 +153,11 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         compression_loss = output['compression_loss']
         loss = criterion(y_hat, target)
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
+        top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         losses_c.update(compression_loss, input.size(0))
-        top1.update(prec1.item(), input.size(0))
-        top5.update(prec5.item(), input.size(0))
+        top1meter.update(top1.item(), input.size(0))
+        top5meter.update(top5.item(), input.size(0))
 
         # compute gradient and do SGD step
         loss += compression_loss
@@ -171,14 +173,16 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         bar.suffix = f'({i + 1}/{train_loader_len})' \
                      f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:} |' \
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
-                     f'top1: {top1.avg: .2f} | top5: {top5.avg: .2f}'
+                     f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
     bar.finish()
 
     summary = {
         'train_loss': losses.avg,
         'train_closs': losses_c.avg,
-        'train_acc': top1.avg,
+        'train_acc': top1meter.avg,
+        'train_top1': top1meter.avg,
+        'train_top5': top5meter.avg,
     }
 
     return summary

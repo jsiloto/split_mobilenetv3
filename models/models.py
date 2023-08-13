@@ -73,8 +73,8 @@ def resume_optimizer(optimizer, checkpoint_path, best=False):
 def resume_training_state(checkpoint_path, best=False):
     metadata = {
         'epoch': 0,
-        'best_prec1': 0.0,
-        'best_prec1classes': 0.0,
+        'best_top1': 0.0,
+        'best_top1classes': 0.0,
     }
 
     checkpoint = load_checkpoint(checkpoint_path, best)
