@@ -24,7 +24,8 @@ from utils import Bar, Logger, AverageMeter, accuracy, savefig
 def init_wandb(configs):
     wandb.init(
         project="concept_compression",
-        config=configs
+        config=configs,
+        name=configs['name'],
     )
 
 

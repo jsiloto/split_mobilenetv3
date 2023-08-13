@@ -23,9 +23,10 @@ def parse_config(args):
     config['model'] = load_config(args.model)['model']
     config['hyper'] = load_config(args.hyper)
     config_name = args.dataset.split("/")[-1].split(".")[0] + "_" \
-                  + args.model.split("/")[-1].split(".")[0] + "_" \
+                  + ".".join(args.model.split("/")[-1].split(".")[0:-1]) + "_" \
                   + args.hyper.split("/")[-1].split(".")[0]
 
+    config['name'] = config_name
     config['checkpoint'] = os.path.join(args.project, config_name, args.name)
 
     if args.clean:

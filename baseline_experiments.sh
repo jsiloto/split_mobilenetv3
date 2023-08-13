@@ -2,6 +2,9 @@
 
 BASE_PARAMS="--hyper configs/hyper/1epoch.yaml --clean"
 
+python train.py --model configs/model/regular.yaml $BASE_PARAMS
+python train.py --model configs/model/channel_bottleneck.yaml $BASE_PARAMS
+
 for BETA in "0.1" "1.0" "10.0"
 do
   for RATIO in "0.1" "0.5" "1.0"
@@ -10,8 +13,7 @@ do
   done
 done
 
-python train.py --model configs/model/regular.yaml $BASE_PARAMS
-python train.py --model configs/model/channel_bottleneck.yaml $BASE_PARAMS
+
 
 
 
