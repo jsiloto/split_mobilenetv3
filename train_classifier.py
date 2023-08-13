@@ -70,7 +70,6 @@ def train_classifier(configs):
     logger.set_names(['Epoch', 'Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
     ########################################################################################
-
     num_epochs = configs['hyper']['epochs']
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
@@ -90,7 +89,7 @@ def train_classifier(configs):
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
 
-        save_checkpoint({
+        checkpoint_file = save_checkpoint({
             'metadata': summary,
             'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
@@ -98,7 +97,7 @@ def train_classifier(configs):
 
         summary['step'] = epoch
         wandb.log(summary)
-        wandb.save(checkpoint_path)
+        wandb.save(checkpoint_file)
 
 
     logger.close()
@@ -124,7 +123,9 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+        filepath = os.path.join(checkpoint, 'model_best.pth.tar')
 
+    return filepath
 
 def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster, epoch):
     bar = Bar('Train', max=train_loader_len)

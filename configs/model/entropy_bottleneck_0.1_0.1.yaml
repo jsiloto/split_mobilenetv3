@@ -1,0 +1,11 @@
+base_model: {
+  pretrained: True,
+  width_mult: 1.0
+}
+
+model: {
+  name: 'entropy_bottleneck',
+  split_position: 5,
+  bottleneck_ratio: 0.1,
+  compression_parameter: 0.1
+}
