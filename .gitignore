@@ -1,6 +1,7 @@
 *.pyc
 .idea/
 data/
+wandb/
 split5/
 checkpoints/
 *.zip
