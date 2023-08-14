@@ -1,9 +1,12 @@
 #!/bin/bash
 
-BASE_PARAMS="--hyper configs/hyper/1epoch.yaml --clean"
+PROJECT="baseline"
+BASE_PARAMS="--hyper configs/hyper/1epoch.yaml --project ${PROJECT} --clean"
 
 python train.py --model configs/model/regular.yaml $BASE_PARAMS
 python train.py --model configs/model/channel_bottleneck.yaml $BASE_PARAMS
+
+PROJECT="baseline"
 
 for BETA in "0.1" "1.0" "10.0"
 do

@@ -22,12 +22,13 @@ def parse_config(args):
     config['base_model'] = load_config(args.model)['base_model']
     config['model'] = load_config(args.model)['model']
     config['hyper'] = load_config(args.hyper)
-    config_name = args.dataset.split("/")[-1].split(".")[0] + "_" \
+    config_name = ".".join(args.dataset.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.model.split("/")[-1].split(".")[0:-1]) + "_" \
-                  + args.hyper.split("/")[-1].split(".")[0]
+                  + ".".join(args.hyper.split("/")[-1].split(".")[0:-1])
 
     config['name'] = config_name
-    config['checkpoint'] = os.path.join(args.project, config_name, args.name)
+    config['project'] = args.project
+    config['checkpoint'] = os.path.join("./checkpoints", args.project, config_name)
 
     if args.clean:
         print("Cleaning checkpoint folder")

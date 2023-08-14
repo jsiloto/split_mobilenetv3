@@ -37,11 +37,14 @@ class MV3EntropyBottleneck(nn.Module):
 
     def forward(self, x):
         output = {}
+        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x)
         if self.training:
-            output['compression_loss'] = -self.compression_parameter * output['likelihoods']['y'].log2().mean()
+            output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
+            output['compression_loss'] = -self.compression_parameter * output['bpp']
         else:
             output['num_bytes'] = sum([len(s) for s in output['strings'][0]])/len(output['strings'][0])
+            output['bpp'] = output['num_bytes'] / pixels
         output['y_hat'] = self.decoder(output['y_hat'])
 
         return output

@@ -25,7 +25,7 @@ def init_wandb(configs):
     wandb.init(
         project="concept_compression",
         config=configs,
-        name=configs['name'],
+        name=configs['project'] + "/" + configs['name'],
     )
 
 
@@ -98,8 +98,6 @@ def train_classifier(configs):
 
         summary['step'] = epoch
         wandb.log(summary)
-        wandb.save(checkpoint_file)
-
 
     logger.close()
     logger.plot()
@@ -113,11 +111,16 @@ def train_classifier(configs):
     print(final_summary['val_top1'])
     print("Best Classes Accuracy")
     print(final_summary['val_top1classes'])
+    checkpoint_file = save_checkpoint({
+        'summary': final_summary,
+        'state_dict': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+    }, True, checkpoint=checkpoint_path)
+    wandb.save(checkpoint_file)
 
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
         json.dump(final_summary, f)
 
-    wandb.save(checkpoint_path)
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
     filepath = os.path.join(checkpoint, filename)
@@ -127,6 +130,7 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
         filepath = os.path.join(checkpoint, 'model_best.pth.tar')
 
     return filepath
+
 
 def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster, epoch):
     bar = Bar('Train', max=train_loader_len)

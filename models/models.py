@@ -34,6 +34,7 @@ class MobilenetV3Regular(nn.Module):
                   'strings': None,
                   'likelihoods': None,
                   'num_bytes': 0.0,
+                  'bpp': 1.0,
                   'compression_loss': 0.0}
         return output
 

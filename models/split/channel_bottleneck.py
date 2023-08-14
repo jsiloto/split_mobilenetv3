@@ -27,16 +27,17 @@ class MV3ChannelBottleneck(nn.Module):
                                           conv=base_model.conv,
                                           avgpool=base_model.avgpool,
                                           classifier=base_model.classifier,
-                                          codec=self.encoder.codec,
                                           original_channels=original_channels,
                                           bottleneck_ratio=bottleneck_ratio)
 
 
     def forward(self, x):
         output = {}
+        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         x = self.encoder(x)
         output['num_bytes'] = x.shape[1]*x.shape[2]*x.shape[3]
         output['y_hat'] = self.decoder(x)
+        output['bpp'] = output['num_bytes'] / pixels
         output['compression_loss'] = 0.0
         return output
 
