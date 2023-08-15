@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import time
+import wandb
+import random
 
 import torch
 import torch.nn as nn
@@ -19,12 +21,21 @@ from models.models import get_model, resume_model, resume_optimizer, resume_trai
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
 
 
+def init_wandb(configs):
+    if configs['wandb']:
+        wandb.init(
+            project="concept_compression",
+            config=configs,
+            name=configs['project'] + "/" + configs['name'],
+        )
+
 
 class LRAdjust:
     def __init__(self, config):
         self.lr = config['lr']
         self.warmup = config['warmup']
         self.epochs = config['epochs']
+
     def adjust(self, optimizer, epoch, iteration, num_iter):
         gamma = 0.1
         warmup_epoch = 10 if self.warmup else 0
@@ -41,71 +52,77 @@ class LRAdjust:
 
 
 def train_classifier(configs):
+    init_wandb(configs)
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
     model = get_model(configs['base_model'], configs['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.SGD(model.parameters(), configs['hyper']['lr'], momentum=0.9, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), configs['hyper']['lr'], weight_decay=1e-4)
     adjuster = LRAdjust(configs['hyper'])
 
     # optionally resume from a checkpoint
     checkpoint_path = configs['checkpoint']
     model = resume_model(model, checkpoint_path, best=False)
     optimizer = resume_optimizer(optimizer, checkpoint_path, best=False)
-    training_state = resume_training_state(checkpoint_path, best=False)
-    start_epoch = training_state['epoch']
+    summary = resume_training_state(checkpoint_path, best=False)
+    start_epoch = summary['epoch']
     print(f"=> start epoch {start_epoch}")
     resume = (start_epoch != 0)
     logger = Logger(os.path.join(checkpoint_path, 'log.txt'), title="title", resume=resume)
     logger.set_names(['Epoch', 'Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
     ########################################################################################
-
     num_epochs = configs['hyper']['epochs']
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
-        train_loss, train_acc = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
-        val_loss, prec1, top1classes = validate(d.val_loader, d.val_loader_len, model, criterion)
+        train_summary = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
+        val_summary = validate(d.val_loader, d.val_loader_len, model, criterion)
+        summary.update(train_summary)
+        summary.update(val_summary)
         lr = optimizer.param_groups[0]['lr']
 
         # append logger file
-        logger.append([epoch, lr, train_loss, val_loss, train_acc, prec1])
-        training_state['epoch'] = epoch + 1
-        training_state['prec1'] = prec1
-        is_best = prec1 > training_state['best_prec1']
+        logger.append([epoch, lr, summary['train_loss'],
+                       summary['val_loss'], summary['train_top1'],
+                       summary['val_top1']])
+        summary['epoch'] = epoch + 1
+        is_best = summary['val_top1'] > summary['best_top1']
         if is_best:
-            training_state['best_prec1'] = prec1
-            training_state['best_prec1classes'] = top1classes
-
-
-        save_checkpoint({
-            'metadata': training_state,
+            summary['best_top1'] = summary['val_top1']
+            summary['best_top1classes'] = summary['val_top1classes']
+            summary['best_bytes'] = summary['val_bytes']
+        checkpoint_file = save_checkpoint({
+            'metadata': summary,
             'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
+
+        summary['step'] = epoch
+        if configs['wandb']:
+            wandb.log(summary)
 
     logger.close()
     logger.plot()
     savefig(os.path.join(checkpoint_path, 'log.eps'))
 
     model = resume_model(model, checkpoint_path, best=True)
-    validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set')
-    _, prec1, top1classes = validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set')
+    final_summary = {}
+    final_summary.update(validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set'))
+    final_summary.update(validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set'))
     print('Best accuracy:')
-    print(prec1)
-    print("Classes Accuracy")
-    print(top1classes)
-
-    results = {}
-    results["prec1"] = prec1
-    results["best_prec1classes"] = top1classes
-    results["val_samples"] = d.val_samples
-    results["train_samples"] = d.train_samples
+    print(final_summary['val_top1'])
+    print("Best Classes Accuracy")
+    print(final_summary['val_top1classes'])
+    checkpoint_file = save_checkpoint({
+        'summary': final_summary,
+        'state_dict': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+    }, True, checkpoint=checkpoint_path)
+    if configs['wandb']:
+        wandb.save(checkpoint_file)
 
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
-        json.dump(results, f)
-
-
+        json.dump(final_summary, f)
 
 
 def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoint.pth.tar'):
@@ -113,6 +130,10 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     torch.save(state, filepath)
     if is_best:
         shutil.copyfile(filepath, os.path.join(checkpoint, 'model_best.pth.tar'))
+        filepath = os.path.join(checkpoint, 'model_best.pth.tar')
+
+    return filepath
+
 
 def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster, epoch):
     bar = Bar('Train', max=train_loader_len)
@@ -120,8 +141,9 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top5 = AverageMeter()
-    top1 = AverageMeter()
+    losses_c = AverageMeter()
+    top5meter = AverageMeter()
+    top1meter = AverageMeter()
 
     # switch to train mode
     model.train()
@@ -137,17 +159,17 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         # compute output
         output = model(input.to('cuda'))
         y_hat = output['y_hat']
-        # likelihoods = output['likelihoods']['y'].log2()
-        # lloss = -likelihoods.mean()
+        compression_loss = output['compression_loss']
         loss = criterion(y_hat, target)
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(y_hat, target, topk=(1, 5))
+        top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        top1.update(prec1.item(), input.size(0))
-        top5.update(prec5.item(), input.size(0))
-
+        losses_c.update(compression_loss, input.size(0))
+        top1meter.update(top1.item(), input.size(0))
+        top5meter.update(top5.item(), input.size(0))
 
         # compute gradient and do SGD step
+        loss += compression_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -157,10 +179,19 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         end = time.time()
 
         # plot progress
-        bar.suffix = f'({i + 1}/{train_loader_len}) Data: {data_time.avg:.3f}s | ' \
-                     f'Batch: {batch_time.avg:.3f}s | Total: {bar.elapsed_td:} |' \
-                     f' ETA: {bar.eta_td:} | Loss: {losses.avg:.4f} | ' \
-                     f'top1: {top1.avg: .4f} | top5: {top5.avg: .4f}'
+        bar.suffix = f'({i + 1}/{train_loader_len})' \
+                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:} |' \
+                     f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
+                     f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
     bar.finish()
-    return (losses.avg, top1.avg)
+
+    summary = {
+        'train_loss': losses.avg,
+        'train_closs': losses_c.avg,
+        'train_acc': top1meter.avg,
+        'train_top1': top1meter.avg,
+        'train_top5': top5meter.avg,
+    }
+
+    return summary

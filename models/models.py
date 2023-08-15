@@ -5,6 +5,9 @@ from torch import nn
 
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
 from models.split.channel_bottleneck import MV3ChannelBottleneck
+from models.split.entropy_bottleneck import MV3EntropyBottleneck
+from models.split.entropy_precompressor import MV3Precompressor
+from models.split.regular import MobilenetV3Regular
 from utils import mkdir_p
 
 
@@ -21,19 +24,6 @@ def load_mobilenetv3(model_config, num_classes=10):
     return model
 
 
-class MobilenetV3Regular(nn.Module):
-    def __init__(self, base_model, **kwargs):
-        super(MobilenetV3Regular, self).__init__()
-        self.base_model = base_model
-        self.num_classes = base_model.classifier[3].out_features
-
-    def forward(self, x):
-        output = {'y_hat': self.base_model(x),
-                  'strings': None,
-                  'likelihoods': None,
-                  'num_bytes': 0.0,
-                  'reg_loss': 0.0}
-        return output
 
 #################################### CHeckpointing ####################################
 def load_checkpoint(checkpoint_path, best=False):
@@ -71,8 +61,8 @@ def resume_optimizer(optimizer, checkpoint_path, best=False):
 def resume_training_state(checkpoint_path, best=False):
     metadata = {
         'epoch': 0,
-        'best_prec1': 0.0,
-        'best_prec1classes': 0.0,
+        'best_top1': 0.0,
+        'best_top1classes': 0.0,
     }
 
     checkpoint = load_checkpoint(checkpoint_path, best)
@@ -90,6 +80,8 @@ def get_model(base_model_config, model_config, num_classes=10):
     model_dict = {
         "regular": MobilenetV3Regular,
         "channel_bottleneck": MV3ChannelBottleneck,
+        "entropy_bottleneck": MV3EntropyBottleneck,
+        "entropy_precompressor": MV3Precompressor,
     }
 
     model = model_dict[model_config['name']](**model_config, base_model=base_model).to('cuda')
