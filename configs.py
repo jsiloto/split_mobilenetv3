@@ -29,6 +29,7 @@ def parse_config(args):
     config['name'] = config_name
     config['project'] = args.project
     config['checkpoint'] = os.path.join("./checkpoints", args.project, config_name)
+    config['wandb'] = args.wandb
 
     if args.clean:
         print("Cleaning checkpoint folder")
@@ -47,11 +48,12 @@ def add_config_args(parser: argparse.ArgumentParser):
     parser.add_argument('--dataset', default='./configs/dataset/stl10.yaml', help='yaml file path')
     parser.add_argument('--model', default='./configs/model/regular.yaml', help='yaml file path')
     parser.add_argument('--hyper', default='./configs/hyper/default.yaml', help='yaml file path')
-    parser.add_argument('-p', '--project', default='./checkpoints', type=str, metavar='PATH',
+    parser.add_argument('-p', '--project', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
     parser.add_argument('-n', '--name', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
     parser.add_argument('--clean', action='store_true', help='clean checkpoint folder')
+    parser.add_argument('--wandb', action='store_true', help='use wandb')
 
 def get_config_from_args(parser: argparse.ArgumentParser):
     add_config_args(parser)

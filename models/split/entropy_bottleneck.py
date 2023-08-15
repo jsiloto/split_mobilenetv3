@@ -6,9 +6,10 @@ from torch import nn
 
 from models.mobilenetv3.mobilenetv3 import MobileNetV3
 from models.split.channel_bottleneck import MobileNetV3Decoder
+from models.split.split_model import SplitModel
 
 
-class MV3EntropyBottleneck(nn.Module):
+class MV3EntropyBottleneck(SplitModel):
     def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float,
                  split_position: int, compression_parameter=0.0, **kwargs):
         super().__init__()
@@ -39,17 +40,18 @@ class MV3EntropyBottleneck(nn.Module):
         output = {}
         pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x)
-        if self.training:
-            output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
-            output['compression_loss'] = -self.compression_parameter * output['bpp']
-        else:
-            output['num_bytes'] = sum([len(s) for s in output['strings'][0]])/len(output['strings'][0])
-            output['bpp'] = output['num_bytes'] / pixels
+        output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
+        output['compression_loss'] = -self.compression_parameter * output['bpp']
         output['y_hat'] = self.decoder(output['y_hat'])
 
         return output
 
-
+    def compress(self, x):
+        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
+        output = self.encoder(x, compress=True)
+        output['num_bytes'] = sum([len(s) for s in output['strings'][0]]) / len(output['strings'][0])
+        output['bpp'] = output['num_bytes'] / pixels
+        return output
 
 class MobileNetV3VanillaEncoder(nn.Module):
     def __init__(self, layers: nn.Sequential, original_channels: int, bottleneck_ratio: float):
@@ -62,15 +64,15 @@ class MobileNetV3VanillaEncoder(nn.Module):
         self.codec = EntropyBottleneckLatentCodec(entropy_bottleneck=entropy_bottleneck)
         self.codec.entropy_bottleneck.update()
 
-    def forward(self, x):
+    def forward(self, x, compress=False):
         x = self.layers(x)
         if self.bottleneck_channels > 0:
             x[:, self.bottleneck_channels:, ::] = 0
             x = x[:, :self.bottleneck_channels, ::]
 
-        if self.training:
-            x = self.codec(x)
-        else:
+        if compress:
             x = self.codec.compress(x)
+        else:
+            x = self.codec(x)
 
         return x

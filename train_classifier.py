@@ -22,11 +22,12 @@ from utils import Bar, Logger, AverageMeter, accuracy, savefig
 
 
 def init_wandb(configs):
-    wandb.init(
-        project="concept_compression",
-        config=configs,
-        name=configs['project'] + "/" + configs['name'],
-    )
+    if configs['wandb']:
+        wandb.init(
+            project="concept_compression",
+            config=configs,
+            name=configs['project'] + "/" + configs['name'],
+        )
 
 
 class LRAdjust:
@@ -97,7 +98,8 @@ def train_classifier(configs):
         }, is_best, checkpoint=checkpoint_path)
 
         summary['step'] = epoch
-        wandb.log(summary)
+        if configs['wandb']:
+            wandb.log(summary)
 
     logger.close()
     logger.plot()
@@ -116,7 +118,8 @@ def train_classifier(configs):
         'state_dict': model.state_dict(),
         'optimizer': optimizer.state_dict(),
     }, True, checkpoint=checkpoint_path)
-    wandb.save(checkpoint_file)
+    if configs['wandb']:
+        wandb.save(checkpoint_file)
 
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
         json.dump(final_summary, f)

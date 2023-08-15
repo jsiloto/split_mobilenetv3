@@ -4,9 +4,10 @@ from compressai.layers import GDN1
 from torch import nn
 
 from models.mobilenetv3.mobilenetv3 import MobileNetV3
+from models.split.split_model import SplitModel
 
 
-class MV3ChannelBottleneck(nn.Module):
+class MV3ChannelBottleneck(SplitModel):
     def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float, split_position: int, **kwargs):
         super().__init__()
         self.base_model = base_model
@@ -41,6 +42,12 @@ class MV3ChannelBottleneck(nn.Module):
         output['compression_loss'] = 0.0
         return output
 
+    def compress(self, x):
+        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
+        x = self.encoder(x)
+        output = {'num_bytes': x.shape[1]*x.shape[2]*x.shape[3]}
+        output['bpp'] = output['num_bytes'] / pixels
+        return output
 
 
 class MobileNetV3VanillaEncoder(nn.Module):

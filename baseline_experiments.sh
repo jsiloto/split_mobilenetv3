@@ -8,7 +8,7 @@ python train.py --model configs/model/channel_bottleneck.yaml $BASE_PARAMS
 
 PROJECT="baseline"
 
-for BETA in "0.1" "1.0" "10.0"
+for BETA in "0.01" "0.1" "1.0" "10.0"
 do
   for RATIO in "0.1" "0.5" "1.0"
   do
