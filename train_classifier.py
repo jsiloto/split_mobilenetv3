@@ -90,7 +90,7 @@ def train_classifier(configs):
         if is_best:
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
-
+            summary['best_bytes'] = summary['val_bytes']
         checkpoint_file = save_checkpoint({
             'metadata': summary,
             'state_dict': model.state_dict(),

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PROJECT="baseline"
-BASE_PARAMS="--hyper configs/hyper/default.yaml --project ${PROJECT} --clean"
+BASE_PARAMS="--hyper configs/hyper/default.yaml --project ${PROJECT} --clean --wandb"
 
 python train.py --model configs/model/regular.yaml $BASE_PARAMS
 python train.py --model configs/model/channel_bottleneck.yaml $BASE_PARAMS
