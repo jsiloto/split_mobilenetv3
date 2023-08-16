@@ -1,5 +1,13 @@
+import argparse
+import json
+import os
 import time
 import torch
+from torch import nn
+
+from configs import get_config_from_args
+from dataset import get_dataset
+from models.models import get_model, resume_model
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 
@@ -72,3 +80,21 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
     }
 
     return summary
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Train Model')
+    configs = get_config_from_args(parser)
+
+    d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
+    teacher = get_model(configs['teacher']['base_model'], configs['teacher']['model'], num_classes=d.num_classes)
+    student = get_model(configs['student']['base_model'], configs['student']['model'], num_classes=d.num_classes)
+    student = resume_model(teacher, "checkpoints/baseline/stl10_channel_bottleneck_1.0_default/", best=False)
+    teacher = resume_model(teacher, "checkpoints/baseline/stl10_channel_bottleneck_1.0_default/", best=False)
+    val_criterion = nn.CrossEntropyLoss().cuda()
+    val_summary = validate(d.val_loader, d.val_loader_len, student, val_criterion)
+    val_summary = validate(d.val_loader, d.val_loader_len, teacher, val_criterion)
+
+if __name__ == '__main__':
+    main()

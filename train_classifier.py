@@ -58,13 +58,14 @@ def train_classifier(configs):
     teacher = get_model(configs['teacher']['base_model'], configs['teacher']['model'], num_classes=10)
     student = get_model(configs['student']['base_model'], configs['student']['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
-    criterion = nn.MSELoss().cuda()
+    train_criterion = nn.MSELoss().cuda()
+    val_criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.Adam(student.parameters(), configs['hyper']['lr'], weight_decay=1e-4)
     adjuster = LRAdjust(configs['hyper'])
 
     # optionally resume from a checkpoint
     checkpoint_path = configs['checkpoint']
-    model = resume_model(student, checkpoint_path, best=False)
+    student = resume_model(student, checkpoint_path, best=False)
     optimizer = resume_optimizer(optimizer, checkpoint_path, best=False)
     summary = resume_training_state(checkpoint_path, best=False)
     start_epoch = summary['epoch']
@@ -77,8 +78,8 @@ def train_classifier(configs):
     num_epochs = configs['hyper']['epochs']
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
-        train_summary = train(d.train_loader, d.train_loader_len, student, teacher, criterion, optimizer, adjuster, epoch)
-        val_summary = validate(d.val_loader, d.val_loader_len, model, criterion)
+        train_summary = train(d.train_loader, d.train_loader_len, student, teacher, train_criterion, optimizer, adjuster, epoch)
+        val_summary = validate(d.val_loader, d.val_loader_len, student, val_criterion)
         summary.update(train_summary)
         summary.update(val_summary)
         lr = optimizer.param_groups[0]['lr']
@@ -95,7 +96,7 @@ def train_classifier(configs):
             summary['best_bytes'] = summary['val_bytes']
         checkpoint_file = save_checkpoint({
             'metadata': summary,
-            'state_dict': model.state_dict(),
+            'state_dict': student.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
 
@@ -107,17 +108,17 @@ def train_classifier(configs):
     logger.plot()
     savefig(os.path.join(checkpoint_path, 'log.eps'))
 
-    model = resume_model(model, checkpoint_path, best=True)
+    student = resume_model(student, checkpoint_path, best=True)
     final_summary = {}
-    final_summary.update(validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set'))
-    final_summary.update(validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set'))
+    final_summary.update(validate(d.train_loader, d.train_loader_len, student, val_criterion, title='Train Set'))
+    final_summary.update(validate(d.val_loader, d.val_loader_len, student, val_criterion, title='Val Set'))
     print('Best accuracy:')
     print(final_summary['val_top1'])
     print("Best Classes Accuracy")
     print(final_summary['val_top1classes'])
     checkpoint_file = save_checkpoint({
         'summary': final_summary,
-        'state_dict': model.state_dict(),
+        'state_dict': student.state_dict(),
         'optimizer': optimizer.state_dict(),
     }, True, checkpoint=checkpoint_path)
     if configs['wandb']:
@@ -149,6 +150,7 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
 
     # switch to train mode
     student.train()
+    teacher.eval()
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
@@ -156,11 +158,11 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
 
         # measure data loading time
         data_time.update(time.time() - end)
-        target = student.encoder(input.to('cuda'))
+        target = target.cuda(non_blocking=True)
+        reference = teacher.encoder(input.to('cuda'))
         output = student.encoder(input.to('cuda'))
-        print(output)
         compression_loss = output['compression_loss']
-        loss = criterion(output['y_hat'], target['y_hat'])
+        loss = criterion(output['y_hat'], reference['y_hat'])
         # measure accuracy and record loss
         with torch.no_grad():
             y_hat = student(input.to('cuda'))['y_hat']
