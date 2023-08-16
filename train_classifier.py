@@ -53,16 +53,18 @@ class LRAdjust:
 
 def train_classifier(configs):
     init_wandb(configs)
+
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
-    model = get_model(configs['base_model'], configs['model'], num_classes=d.num_classes)
+    teacher = get_model(configs['teacher']['base_model'], configs['teacher']['model'], num_classes=10)
+    student = get_model(configs['student']['base_model'], configs['student']['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.Adam(model.parameters(), configs['hyper']['lr'], weight_decay=1e-4)
+    criterion = nn.MSELoss().cuda()
+    optimizer = torch.optim.Adam(student.parameters(), configs['hyper']['lr'], weight_decay=1e-4)
     adjuster = LRAdjust(configs['hyper'])
 
     # optionally resume from a checkpoint
     checkpoint_path = configs['checkpoint']
-    model = resume_model(model, checkpoint_path, best=False)
+    model = resume_model(student, checkpoint_path, best=False)
     optimizer = resume_optimizer(optimizer, checkpoint_path, best=False)
     summary = resume_training_state(checkpoint_path, best=False)
     start_epoch = summary['epoch']
@@ -75,7 +77,7 @@ def train_classifier(configs):
     num_epochs = configs['hyper']['epochs']
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
-        train_summary = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
+        train_summary = train(d.train_loader, d.train_loader_len, student, teacher, criterion, optimizer, adjuster, epoch)
         val_summary = validate(d.val_loader, d.val_loader_len, model, criterion)
         summary.update(train_summary)
         summary.update(val_summary)
@@ -135,7 +137,7 @@ def save_checkpoint(state, is_best, checkpoint='checkpoint', filename='checkpoin
     return filepath
 
 
-def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster, epoch):
+def train(train_loader, train_loader_len, student, teacher, criterion, optimizer, adjuster, epoch):
     bar = Bar('Train', max=train_loader_len)
 
     batch_time = AverageMeter()
@@ -146,7 +148,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     top1meter = AverageMeter()
 
     # switch to train mode
-    model.train()
+    student.train()
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
@@ -154,14 +156,14 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
         # measure data loading time
         data_time.update(time.time() - end)
-
-        target = target.cuda(non_blocking=True)
-        # compute output
-        output = model(input.to('cuda'))
-        y_hat = output['y_hat']
+        target = student.encoder(input.to('cuda'))
+        output = student.encoder(input.to('cuda'))
+        print(output)
         compression_loss = output['compression_loss']
-        loss = criterion(y_hat, target)
+        loss = criterion(output['y_hat'], target['y_hat'])
         # measure accuracy and record loss
+        with torch.no_grad():
+            y_hat = student(input.to('cuda'))['y_hat']
         top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         losses_c.update(compression_loss, input.size(0))

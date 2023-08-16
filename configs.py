@@ -18,12 +18,12 @@ def parse_config(args):
         return config
 
     config = {}
+    config['student'] = load_config(args.student)
+    config['teacher'] = load_config(args.teacher)
     config['dataset'] = load_config(args.dataset)
-    config['base_model'] = load_config(args.model)['base_model']
-    config['model'] = load_config(args.model)['model']
     config['hyper'] = load_config(args.hyper)
     config_name = ".".join(args.dataset.split("/")[-1].split(".")[0:-1]) + "_" \
-                  + ".".join(args.model.split("/")[-1].split(".")[0:-1]) + "_" \
+                  + ".".join(args.student.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.hyper.split("/")[-1].split(".")[0:-1])
 
     config['name'] = config_name
@@ -46,12 +46,14 @@ def parse_config(args):
 def add_config_args(parser: argparse.ArgumentParser):
     parser.add_argument('--config', help='Master yaml file path, overrides every other config')
     parser.add_argument('--dataset', default='./configs/dataset/stl10.yaml', help='yaml file path')
-    parser.add_argument('--model', default='./configs/model/regular.yaml', help='yaml file path')
+    parser.add_argument('--student', default='./configs/model/regular.yaml', help='yaml file path')
     parser.add_argument('--hyper', default='./configs/hyper/default.yaml', help='yaml file path')
     parser.add_argument('-p', '--project', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
     parser.add_argument('-n', '--name', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
+    parser.add_argument('--teacher', default=None, type=str, metavar='PATH',
+                        help='checkpoint teacher path')
     parser.add_argument('--clean', action='store_true', help='clean checkpoint folder')
     parser.add_argument('--wandb', action='store_true', help='use wandb')
 
