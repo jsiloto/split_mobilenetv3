@@ -63,4 +63,5 @@ class Precompressor(nn.Module):
             x = self.codec.compress(x)
 
         x['y_hat'] = self.decoder(x['y_hat'])
+        output['compression_loss'] = -self.compression_parameter * output['likelihoods']['y'].log2().mean()
         return x

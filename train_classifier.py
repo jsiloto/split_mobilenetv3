@@ -38,17 +38,23 @@ class LRAdjust:
 
     def adjust(self, optimizer, epoch, iteration, num_iter):
         gamma = 0.1
-        warmup_epoch = 10 if self.warmup else 0
+        warmup_epoch = 5 if self.warmup else 0
         warmup_iter = warmup_epoch * num_iter
         current_iter = iteration + epoch * num_iter
         max_iter = self.epochs * num_iter
-        lr = self.lr * (gamma ** ((current_iter - warmup_iter) // (max_iter - warmup_iter)))
+
 
         if epoch < warmup_epoch:
             lr = self.lr * current_iter / warmup_iter
+        else:
+            multiplier = (gamma ** ((current_iter - warmup_iter) / (max_iter - warmup_iter)))
+            lr = self.lr * multiplier
+            print(multiplier)
 
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
+
+
 
 
 def train_classifier(configs):
@@ -153,9 +159,8 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
     teacher.eval()
 
     end = time.time()
+    adjuster.adjust(optimizer, epoch, 0, train_loader_len)
     for i, (input, target) in enumerate(train_loader):
-        adjuster.adjust(optimizer, epoch, i, train_loader_len)
-
         # measure data loading time
         data_time.update(time.time() - end)
         target = target.cuda(non_blocking=True)
@@ -184,7 +189,8 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
 
         # plot progress
         bar.suffix = f'({i + 1}/{train_loader_len})' \
-                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:} |' \
+                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s ' \
+                    f'| LR: {optimizer.param_groups[0]["lr"]:.4f} |' \
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
                      f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
