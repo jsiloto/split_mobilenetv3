@@ -1,0 +1,13 @@
+base_model: {
+  pretrained: True,
+  width_mult: 1.0,
+  checkpoint: 'models/mobilenetv3/pretrained/mobilenetv3-large-stl10.pth'
+}
+
+model: {
+  name: 'entropy_bottleneck2',
+  split_position: 5,
+  bottleneck_position: 3,
+  bottleneck_ratio: 1.0,
+  compression_parameter: 1.0
+}

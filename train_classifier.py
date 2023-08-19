@@ -15,11 +15,13 @@ import torch.nn.parallel
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
+from matplotlib import pyplot as plt
+
 from dataset import get_dataset
 from eval_classifier import validate
 from models.models import get_model, resume_model, resume_optimizer, resume_training_state
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
-
+from compressai_trainer.plot import plot_entropy_bottleneck_distributions
 
 def init_wandb(configs):
     if configs['wandb']:
@@ -82,6 +84,8 @@ def train_classifier(configs):
 
     ########################################################################################
     num_epochs = configs['hyper']['epochs']
+    student.encoder.codec.entropy_bottleneck.update(force=True)
+
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
         train_summary = train(d.train_loader, d.train_loader_len, student, teacher, train_criterion, optimizer, adjuster, epoch)
@@ -113,6 +117,9 @@ def train_classifier(configs):
     logger.close()
     logger.plot()
     savefig(os.path.join(checkpoint_path, 'log.eps'))
+
+    fig = plot_entropy_bottleneck_distributions(student.encoder.codec.entropy_bottleneck)
+    fig.write_image(file='my_figure.png', format='png')
 
     student = resume_model(student, checkpoint_path, best=True)
     final_summary = {}
@@ -162,10 +169,16 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
     adjuster.adjust(optimizer, epoch, 0, train_loader_len)
     for i, (input, target) in enumerate(train_loader):
         # measure data loading time
+        # a = student.compress(input.to('cuda'))
+        # print(len(a['strings'][0][0]))
+        # exit()
+
         data_time.update(time.time() - end)
         target = target.cuda(non_blocking=True)
         reference = teacher.encoder(input.to('cuda'))
         output = student.encoder(input.to('cuda'))
+
+
         compression_loss = output['compression_loss']
         loss = criterion(output['y_hat'], reference['y_hat'])
         # measure accuracy and record loss

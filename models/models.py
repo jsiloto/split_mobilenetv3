@@ -6,6 +6,7 @@ from torch import nn
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
 from models.split.channel_bottleneck import MV3ChannelBottleneck
 from models.split.entropy_bottleneck import MV3EntropyBottleneck
+from models.split.entropy_bottleneck2 import MV3EntropyBottleneck2
 from models.split.entropy_precompressor import MV3Precompressor
 from models.split.regular import MobilenetV3Regular
 from utils import mkdir_p
@@ -87,6 +88,7 @@ def get_model(base_model_config, model_config, num_classes=10):
         "regular": MobilenetV3Regular,
         "channel_bottleneck": MV3ChannelBottleneck,
         "entropy_bottleneck": MV3EntropyBottleneck,
+        "entropy_bottleneck2": MV3EntropyBottleneck2,
         "entropy_precompressor": MV3Precompressor,
     }
 

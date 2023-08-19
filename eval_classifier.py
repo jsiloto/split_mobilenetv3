@@ -61,11 +61,12 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
         # Record Bytes at the end of the epoch to reduce computational overhead
         output = model.compress(input.to('cuda'))
+        bpp = output['bpp']
         num_bytes = output['num_bytes']
         bar.suffix = f'({i + 1}/{val_loader_len}) ' \
                      f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:}' \
                      f' | ETA: {bar.eta_td:} | Loss: {losses.avg:.2f} | top1: {top1meter.avg: .2f}' \
-                     f' | top5: {top5meter.avg: .2f} | Bytes: {num_bytes: .1f}'
+                     f' | top5: {top5meter.avg: .2f} | BPP: {bpp: .4f}'
         bar.next()
 
     bar.finish()
@@ -77,6 +78,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
         'val_bytes': num_bytes,
         'val_top1classes': top1classes,
         'val_loss': losses.avg,
+        'val_bpp': bpp,
     }
 
     return summary
