@@ -52,6 +52,8 @@ def resume_model(model, checkpoint_path, best=False):
         print(f"=> no model checkpoint found at {checkpoint_path}")
     else:
         model.load_state_dict(checkpoint['state_dict'])
+        if hasattr(model.encoder, 'codec'):
+            model.encoder.codec.entropy_bottleneck.update()
 
     return model
 
@@ -66,7 +68,7 @@ def resume_optimizer(optimizer, checkpoint_path, best=False):
 
 
 def resume_training_state(checkpoint_path, best=False):
-    metadata = {
+    summary = {
         'epoch': 0,
         'best_top1': 0.0,
         'best_top1classes': 0.0,
@@ -76,8 +78,8 @@ def resume_training_state(checkpoint_path, best=False):
     if checkpoint is None:
         print(f"=> no summary checkpoint found at {checkpoint_path}")
     else:
-        metadata = checkpoint['metadata']
-    return metadata
+        summary = checkpoint['summary']
+    return summary
 
 
 #################################### Model Dicts ####################################

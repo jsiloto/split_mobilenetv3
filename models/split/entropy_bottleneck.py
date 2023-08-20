@@ -77,7 +77,7 @@ class MobileNetV3VanillaEncoder(nn.Module):
         self.compression_parameter = compression_parameter
 
     def forward(self, x, compress=False):
-        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
+        pixels = x.shape[0]*x.shape[-1] * x.shape[-2] * x.shape[-3]
         x = self.layers_pre(x)
 
         if compress:

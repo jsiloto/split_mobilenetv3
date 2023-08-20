@@ -60,6 +60,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
             bar.next()
 
         # Record Bytes at the end of the epoch to reduce computational overhead
+        model.encoder.codec.entropy_bottleneck.update(force=True)
         output = model.compress(input.to('cuda'))
         bpp = output['bpp']
         num_bytes = output['num_bytes']

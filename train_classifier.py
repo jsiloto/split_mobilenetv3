@@ -84,7 +84,6 @@ def train_classifier(configs):
 
     ########################################################################################
     num_epochs = configs['hyper']['epochs']
-    student.encoder.codec.entropy_bottleneck.update(force=True)
 
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
@@ -105,7 +104,7 @@ def train_classifier(configs):
             summary['best_top1classes'] = summary['val_top1classes']
             summary['best_bytes'] = summary['val_bytes']
         checkpoint_file = save_checkpoint({
-            'metadata': summary,
+            'summary': summary,
             'state_dict': student.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
@@ -122,7 +121,7 @@ def train_classifier(configs):
     fig.write_image(file='my_figure.png', format='png')
 
     student = resume_model(student, checkpoint_path, best=True)
-    final_summary = {}
+    final_summary = summary
     final_summary.update(validate(d.train_loader, d.train_loader_len, student, val_criterion, title='Train Set'))
     final_summary.update(validate(d.val_loader, d.val_loader_len, student, val_criterion, title='Val Set'))
     print('Best accuracy:')
@@ -137,6 +136,7 @@ def train_classifier(configs):
     if configs['wandb']:
         wandb.save(checkpoint_file)
 
+    print(final_summary)
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
         json.dump(final_summary, f)
 
@@ -186,7 +186,7 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
             y_hat = student(input.to('cuda'))['y_hat']
         top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        losses_c.update(compression_loss, input.size(0))
+        losses_c.update(compression_loss.item(), input.size(0))
         top1meter.update(top1.item(), input.size(0))
         top5meter.update(top5.item(), input.size(0))
 
