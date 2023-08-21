@@ -16,14 +16,16 @@ class MobilenetV3Regular(nn.Module):
         output = {'y_hat': self.base_model(x),
                   'strings': None,
                   'likelihoods': None,
-                  'compression_loss': 0.0}
+                  'compression_loss': torch.tensor(0.0)}
         return output
 
     def compress(self, x):
+        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         jpeg = JPEGCompression(quality=95)
         for xx in x:
             xx = torchvision.transforms.functional.to_pil_image(xx)
             jpeg(xx)
 
-        output = {'num_bytes': jpeg.average_size()}
+        output = {'num_bytes': jpeg.average_size(),
+                  'bpp': jpeg.average_size() / pixels}
         return output

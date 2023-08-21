@@ -9,6 +9,8 @@ import git
 
 
 def load_config(yaml_path):
+    if yaml_path is None:
+        return None
     with open(yaml_path) as f:
         return yaml.full_load(f)
 
@@ -19,6 +21,7 @@ def parse_config(args):
 
     config = {}
     config['student'] = load_config(args.student)
+    config['model'] = load_config(args.student)
     config['teacher'] = load_config(args.teacher)
     config['dataset'] = load_config(args.dataset)
     config['hyper'] = load_config(args.hyper)
@@ -46,7 +49,7 @@ def parse_config(args):
 def add_config_args(parser: argparse.ArgumentParser):
     parser.add_argument('--config', help='Master yaml file path, overrides every other config')
     parser.add_argument('--dataset', default='./configs/dataset/stl10.yaml', help='yaml file path')
-    parser.add_argument('--student', default='./configs/model/regular.yaml', help='yaml file path')
+    parser.add_argument('--student', '--model', default='./configs/model/regular.yaml', help='yaml file path')
     parser.add_argument('--hyper', default='./configs/hyper/default.yaml', help='yaml file path')
     parser.add_argument('-p', '--project', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
