@@ -45,7 +45,7 @@ class MV3EntropyBottleneck(SplitModel):
 
     def forward(self, x):
         output = {}
-        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
+        pixels = x.shape[0]* x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x)
         output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
         output['compression_loss'] = -self.compression_parameter * output['bpp']
