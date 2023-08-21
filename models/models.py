@@ -70,6 +70,8 @@ def resume_optimizer(optimizer, checkpoint_path, best=False):
 def resume_training_state(checkpoint_path, best=False):
     summary = {
         'epoch': 0,
+        'best_discriminator': 100000,
+        'best_bytes': 100000,
         'best_top1': 0.0,
         'best_top1classes': 0.0,
     }

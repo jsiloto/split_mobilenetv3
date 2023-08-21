@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PROJECT="distillation2"
-BASE_PARAMS="--hyper configs/hyper/default.yaml --project ${PROJECT} --clean --wandb"
+BASE_PARAMS="--hyper configs/hyper/low.yaml --project ${PROJECT} --clean --wandb"
 
 for BETA in "1.0" "5.0" "25.0" "10.0" "50.0"
 do

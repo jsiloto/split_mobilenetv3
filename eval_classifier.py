@@ -82,6 +82,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
         'val_top1classes': top1classes,
         'val_loss': losses.avg,
         'val_bpp': bpp,
+        'val_discriminator': num_bytes/losses.avg,
     }
 
     return summary

@@ -19,6 +19,7 @@ from matplotlib import pyplot as plt
 
 from dataset import get_dataset
 from eval_classifier import validate
+from models.ema import EMA
 from models.models import get_model, resume_model, resume_optimizer, resume_training_state
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
 from compressai_trainer.plot import plot_entropy_bottleneck_distributions
@@ -163,6 +164,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     # switch to train mode
     model.train()
 
+
     end = time.time()
     adjuster.adjust(optimizer, epoch, 0, train_loader_len)
     for i, (input, target) in enumerate(train_loader):
@@ -199,10 +201,12 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         # plot progress
         bar.suffix = f'({i + 1}/{train_loader_len})' \
                      f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s ' \
-                    f'| LR: {optimizer.param_groups[0]["lr"]:.4f} |' \
+                     f'| LR: {optimizer.param_groups[0]["lr"]:.4f} |' \
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
                      f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
+
+
     bar.finish()
 
     summary = {

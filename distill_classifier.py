@@ -19,6 +19,7 @@ from matplotlib import pyplot as plt
 
 from dataset import get_dataset
 from eval_classifier import validate
+from models.ema import EMA
 from models.models import get_model, resume_model, resume_optimizer, resume_training_state
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
 from compressai_trainer.plot import plot_entropy_bottleneck_distributions
@@ -84,6 +85,7 @@ def distill_classifier(configs):
 
     ########################################################################################
     num_epochs = configs['hyper']['epochs']
+    best_discriminator = summary['best_discriminator']
 
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
@@ -98,8 +100,10 @@ def distill_classifier(configs):
                        summary['val_loss'], summary['train_top1'],
                        summary['val_top1']])
         summary['epoch'] = epoch + 1
-        is_best = summary['val_top1'] > summary['best_top1']
+        is_best = best_discriminator > summary['val_discriminator']
+
         if is_best:
+            summary['best_discriminator'] = summary['val_discriminator']
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
             summary['best_bytes'] = summary['val_bytes']
@@ -161,7 +165,7 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
     top5meter = AverageMeter()
     top1meter = AverageMeter()
 
-    # switch to train mode
+
     student.train()
     teacher.eval()
 
@@ -207,6 +211,11 @@ def train(train_loader, train_loader_len, student, teacher, criterion, optimizer
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
                      f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
+        # print(student.encoder.layers_pre[0][0].weight[0])
+
+        # print(student.encoder.layers_pre[0][0].weight[0])
+        # exit()
+
     bar.finish()
 
     summary = {
