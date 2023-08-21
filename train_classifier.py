@@ -19,7 +19,6 @@ from matplotlib import pyplot as plt
 
 from dataset import get_dataset
 from eval_classifier import validate
-from models.ema import EMA
 from models.models import get_model, resume_model, resume_optimizer, resume_training_state
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
 from compressai_trainer.plot import plot_entropy_bottleneck_distributions
