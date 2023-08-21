@@ -84,6 +84,7 @@ def train_classifier(configs):
 
     ########################################################################################
     num_epochs = configs['hyper']['epochs']
+    best_discriminator = summary['best_discriminator']
 
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
@@ -98,8 +99,10 @@ def train_classifier(configs):
                        summary['val_loss'], summary['train_top1'],
                        summary['val_top1']])
         summary['epoch'] = epoch + 1
-        is_best = summary['val_top1'] > summary['best_top1']
+        is_best = best_discriminator > summary['val_discriminator']
+
         if is_best:
+            summary['best_discriminator'] = summary['val_discriminator']
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
             summary['best_bytes'] = summary['val_bytes']
