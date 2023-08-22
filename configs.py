@@ -20,14 +20,18 @@ def parse_config(args):
         return config
 
     config = {}
-    config['student'] = load_config(args.student)
     config['model'] = load_config(args.student)
+    if args.beta is not None:
+        config['model']['beta'] = args.beta
+    config['student'] = config['model']
     config['teacher'] = load_config(args.teacher)
     config['dataset'] = load_config(args.dataset)
     config['hyper'] = load_config(args.hyper)
+
     config_name = ".".join(args.dataset.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.student.split("/")[-1].split(".")[0:-1]) + "_" \
-                  + ".".join(args.hyper.split("/")[-1].split(".")[0:-1])
+                  + ".".join(args.hyper.split("/")[-1].split(".")[0:-1]) + "_" \
+                   "beta" + str(config['model']['beta'])
 
     config['name'] = config_name
     config['project'] = args.project
@@ -51,6 +55,7 @@ def add_config_args(parser: argparse.ArgumentParser):
     parser.add_argument('--dataset', default='./configs/dataset/stl10.yaml', help='yaml file path')
     parser.add_argument('--student', '--model', default='./configs/model/regular.yaml', help='yaml file path')
     parser.add_argument('--hyper', default='./configs/hyper/default.yaml', help='yaml file path')
+    parser.add_argument('--beta', type=float, default=None, help='beta for compression loss')
     parser.add_argument('-p', '--project', default='default', type=str, metavar='PATH',
                         help='checkpoint project path')
     parser.add_argument('-n', '--name', default='default', type=str, metavar='PATH',

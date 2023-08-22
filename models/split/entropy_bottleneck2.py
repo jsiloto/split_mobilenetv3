@@ -13,13 +13,13 @@ from models.split.split_model import SplitModel
 
 class MV3EntropyBottleneck2(SplitModel):
     def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float,
-                 split_position: int, bottleneck_position: int, compression_parameter: float, **kwargs):
+                 split_position: int, bottleneck_position: int, beta: float, **kwargs):
         super().__init__()
         self.base_model = base_model
         self.split_position = split_position
         self.bottleneck_position = bottleneck_position
         self.num_classes = base_model.classifier[3].out_features
-        self.compression_parameter = compression_parameter
+        self.beta = beta
         bottleneck_channels = base_model.cfgs[self.bottleneck_position - 1][2]
         original_channels = base_model.cfgs[self.split_position - 1][2]
         encoder_layers_pre = list(base_model.features[:self.split_position])
@@ -31,7 +31,7 @@ class MV3EntropyBottleneck2(SplitModel):
 
         self.encoder = MobileNetV3VanillaEncoder(layers_pre=encoder_layers_pre,
                                                  original_channels=original_channels,
-                                                 compression_parameter=compression_parameter)
+                                                 beta=beta)
         self.decoder = MobileNetV3Decoder(layers=decoder_layers,
                                           conv=base_model.conv,
                                           avgpool=base_model.avgpool,
@@ -44,7 +44,7 @@ class MV3EntropyBottleneck2(SplitModel):
         pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x)
         output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
-        output['compression_loss'] = -self.compression_parameter * output['bpp']
+        output['compression_loss'] = -self.beta * output['bpp']
         output['y_hat'] = self.decoder(output['y_hat'])
 
         return output
@@ -59,7 +59,7 @@ class MV3EntropyBottleneck2(SplitModel):
 
 
 class MobileNetV3VanillaEncoder(nn.Module):
-    def __init__(self, layers_pre: List, original_channels: int, compression_parameter: float):
+    def __init__(self, layers_pre: List, original_channels: int, beta: float):
         super().__init__()
         self.original_channels = original_channels
         N = 128
@@ -67,7 +67,7 @@ class MobileNetV3VanillaEncoder(nn.Module):
         # self.bottleneck_channels = int(self.bottleneck_ratio * self.bottleneck_channels)
         entropy_bottleneck = EntropyBottleneck(N, filters=(8, 8, 8, 8))
         self.codec = EntropyBottleneckLatentCodec(entropy_bottleneck=entropy_bottleneck)
-        self.compression_parameter = compression_parameter
+        self.beta = beta
         self.layers_pre = nn.Sequential(
             nn.Conv2d(3, N, 5, 2, 2),
             GDN1(N),
@@ -98,7 +98,7 @@ class MobileNetV3VanillaEncoder(nn.Module):
         else:
             x = self.codec(x)
             x['bpp'] = x['likelihoods']['y'].log2().sum() / pixels
-            x['compression_loss'] = -self.compression_parameter * x['bpp']
+            x['compression_loss'] = -self.beta * x['bpp']
 
         x['y_hat'] = self.layers_post(x['y_hat'])
 

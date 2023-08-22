@@ -10,13 +10,13 @@ from models.split.split_model import SplitModel
 
 
 class MV3Precompressor(SplitModel):
-    def __init__(self, base_model: MobileNetV3, compression_parameter=0.0, **kwargs):
+    def __init__(self, base_model: MobileNetV3, beta=0.0, **kwargs):
         super().__init__()
         self.base_model = base_model
         self.num_classes = base_model.classifier[3].out_features
-        self.compression_parameter = compression_parameter
+        self.beta = beta
 
-        self.encoder = Precompressor(compression_parameter=compression_parameter, N=128)
+        self.encoder = Precompressor(beta=beta, N=128)
         self.decoder = self.base_model
 
     def forward(self, x):
@@ -30,10 +30,10 @@ class MV3Precompressor(SplitModel):
         return output
 
 class Precompressor(nn.Module):
-    def __init__(self, compression_parameter: float, N: int = 128):
+    def __init__(self, beta: float, N: int = 128):
         super().__init__()
         entropy_bottleneck = EntropyBottleneck(N, filters=(8, 8, 8, 8))
-        self.compression_parameter = compression_parameter
+        self.beta = beta
         self.codec = EntropyBottleneckLatentCodec(entropy_bottleneck)
         self.codec.entropy_bottleneck.update()
         self.encoder = nn.Sequential(
@@ -60,7 +60,7 @@ class Precompressor(nn.Module):
         x = self.encoder(x)
         x = self.codec(x)
         x['y_hat'] = self.decoder(x['y_hat'])
-        x['compression_loss'] = -self.compression_parameter * x['likelihoods']['y'].log2().mean()
+        x['compression_loss'] = -self.beta * x['likelihoods']['y'].log2().mean()
         return x
 
     def compress(self, x):
