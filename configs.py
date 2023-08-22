@@ -22,7 +22,7 @@ def parse_config(args):
     config = {}
     config['model'] = load_config(args.student)
     if args.beta is not None:
-        config['model']['beta'] = args.beta
+        config['model']['model']['beta'] = args.beta
     config['student'] = config['model']
     config['teacher'] = load_config(args.teacher)
     config['dataset'] = load_config(args.dataset)
@@ -31,7 +31,7 @@ def parse_config(args):
     config_name = ".".join(args.dataset.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.student.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.hyper.split("/")[-1].split(".")[0:-1]) + "_" \
-                   "beta" + str(config['model']['beta'])
+                   "beta" + str(config['model']['model']['beta'])
 
     config['name'] = config_name
     config['project'] = args.project
