@@ -20,5 +20,7 @@ jupyter
 torch_tb_profiler
 h5py
 compressai @ git+https://github.com/InterDigitalInc/CompressAI.git@5b4aac0
+compressai-trainer @ git+https://github.com/InterDigitalInc/CompressAI-Trainer.git
 wandb
 gitpython
+kaleido

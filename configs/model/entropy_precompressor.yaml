@@ -7,6 +7,6 @@ model: {
   name: 'entropy_precompressor',
   split_position: 5,
   bottleneck_ratio: 1.0,
-  compression_parameter: 1.0,
+  beta: 1.0,
   N: 64
 }

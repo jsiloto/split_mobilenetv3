@@ -15,11 +15,13 @@ import torch.nn.parallel
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
+from matplotlib import pyplot as plt
+
 from dataset import get_dataset
 from eval_classifier import validate
 from models.models import get_model, resume_model, resume_optimizer, resume_training_state
 from utils import Bar, Logger, AverageMeter, accuracy, savefig
-
+from compressai_trainer.plot import plot_entropy_bottleneck_distributions
 
 def init_wandb(configs):
     if configs['wandb']:
@@ -38,25 +40,33 @@ class LRAdjust:
 
     def adjust(self, optimizer, epoch, iteration, num_iter):
         gamma = 0.1
-        warmup_epoch = 10 if self.warmup else 0
+        warmup_epoch = 5 if self.warmup else 0
         warmup_iter = warmup_epoch * num_iter
         current_iter = iteration + epoch * num_iter
         max_iter = self.epochs * num_iter
-        lr = self.lr * (gamma ** ((current_iter - warmup_iter) // (max_iter - warmup_iter)))
+
 
         if epoch < warmup_epoch:
             lr = self.lr * current_iter / warmup_iter
+        else:
+            multiplier = (gamma ** ((current_iter - warmup_iter) / (max_iter - warmup_iter)))
+            lr = self.lr * multiplier
+            print(multiplier)
 
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
 
+
+
 def train_classifier(configs):
     init_wandb(configs)
+
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
-    model = get_model(configs['base_model'], configs['model'], num_classes=d.num_classes)
+    model = get_model(configs['model']['base_model'], configs['model']['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda()
+    train_criterion = nn.CrossEntropyLoss().cuda()
+    val_criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.Adam(model.parameters(), configs['hyper']['lr'], weight_decay=1e-4)
     adjuster = LRAdjust(configs['hyper'])
 
@@ -73,10 +83,12 @@ def train_classifier(configs):
 
     ########################################################################################
     num_epochs = configs['hyper']['epochs']
+    best_discriminator = summary['best_discriminator']
+
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
-        train_summary = train(d.train_loader, d.train_loader_len, model, criterion, optimizer, adjuster, epoch)
-        val_summary = validate(d.val_loader, d.val_loader_len, model, criterion)
+        train_summary = train(d.train_loader, d.train_loader_len, model, train_criterion, optimizer, adjuster, epoch)
+        val_summary = validate(d.val_loader, d.val_loader_len, model, val_criterion)
         summary.update(train_summary)
         summary.update(val_summary)
         lr = optimizer.param_groups[0]['lr']
@@ -86,13 +98,15 @@ def train_classifier(configs):
                        summary['val_loss'], summary['train_top1'],
                        summary['val_top1']])
         summary['epoch'] = epoch + 1
-        is_best = summary['val_top1'] > summary['best_top1']
+        is_best = best_discriminator > summary['val_discriminator']
+
         if is_best:
+            summary['best_discriminator'] = summary['val_discriminator']
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
             summary['best_bytes'] = summary['val_bytes']
         checkpoint_file = save_checkpoint({
-            'metadata': summary,
+            'summary': summary,
             'state_dict': model.state_dict(),
             'optimizer': optimizer.state_dict(),
         }, is_best, checkpoint=checkpoint_path)
@@ -105,10 +119,13 @@ def train_classifier(configs):
     logger.plot()
     savefig(os.path.join(checkpoint_path, 'log.eps'))
 
+    fig = plot_entropy_bottleneck_distributions(model.encoder.codec.entropy_bottleneck)
+    fig.write_image(file='my_figure.png', format='png')
+
     model = resume_model(model, checkpoint_path, best=True)
-    final_summary = {}
-    final_summary.update(validate(d.train_loader, d.train_loader_len, model, criterion, title='Train Set'))
-    final_summary.update(validate(d.val_loader, d.val_loader_len, model, criterion, title='Val Set'))
+    final_summary = summary
+    final_summary.update(validate(d.train_loader, d.train_loader_len, model, val_criterion, title='Train Set'))
+    final_summary.update(validate(d.val_loader, d.val_loader_len, model, val_criterion, title='Val Set'))
     print('Best accuracy:')
     print(final_summary['val_top1'])
     print("Best Classes Accuracy")
@@ -121,6 +138,7 @@ def train_classifier(configs):
     if configs['wandb']:
         wandb.save(checkpoint_file)
 
+    print(final_summary)
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
         json.dump(final_summary, f)
 
@@ -148,23 +166,27 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
     # switch to train mode
     model.train()
 
+
     end = time.time()
+    adjuster.adjust(optimizer, epoch, 0, train_loader_len)
     for i, (input, target) in enumerate(train_loader):
-        adjuster.adjust(optimizer, epoch, i, train_loader_len)
-
         # measure data loading time
-        data_time.update(time.time() - end)
+        # a = student.compress(input.to('cuda'))
+        # print(len(a['strings'][0][0]))
+        # exit()
 
+        data_time.update(time.time() - end)
         target = target.cuda(non_blocking=True)
-        # compute output
         output = model(input.to('cuda'))
-        y_hat = output['y_hat']
+
         compression_loss = output['compression_loss']
-        loss = criterion(y_hat, target)
+        loss = criterion(output['y_hat'], target)
         # measure accuracy and record loss
+        with torch.no_grad():
+            y_hat = model(input.to('cuda'))['y_hat']
         top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        losses_c.update(compression_loss, input.size(0))
+        losses_c.update(compression_loss.item(), input.size(0))
         top1meter.update(top1.item(), input.size(0))
         top5meter.update(top5.item(), input.size(0))
 
@@ -180,10 +202,13 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
         # plot progress
         bar.suffix = f'({i + 1}/{train_loader_len})' \
-                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s | T: {bar.elapsed_td:} |' \
+                     f'D/B/D+B: {data_time.avg:.2f}s/{batch_time.avg:.2f}s ' \
+                     f'| LR: {optimizer.param_groups[0]["lr"]:.4f} |' \
                      f' ETA: {bar.eta_td:} | Loss: {losses.avg:.3f} | CLoss: {losses_c.avg:.3f} |' \
                      f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
+
+
     bar.finish()
 
     summary = {

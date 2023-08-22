@@ -6,6 +6,7 @@ from torch import nn
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
 from models.split.channel_bottleneck import MV3ChannelBottleneck
 from models.split.entropy_bottleneck import MV3EntropyBottleneck
+from models.split.entropy_bottleneck2 import MV3EntropyBottleneck2
 from models.split.entropy_precompressor import MV3Precompressor
 from models.split.regular import MobilenetV3Regular
 from utils import mkdir_p
@@ -14,10 +15,16 @@ from utils import mkdir_p
 def load_mobilenetv3(model_config, num_classes=10):
     # create model
     model = mobilenetv3_large(num_classes=num_classes, **model_config)
+    checkpoint_path = 'models/mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth'
+    if 'checkpoint' in model_config:
+        checkpoint_path = model_config['checkpoint']
+
     if model_config['pretrained']:
-        state_dict = torch.load('models/mobilenetv3/pretrained/mobilenetv3-large-1cd25616.pth')
-        state_dict.pop("classifier.3.weight")
-        state_dict.pop("classifier.3.bias")
+        state_dict = torch.load(checkpoint_path)
+        if state_dict["classifier.3.weight"].shape[0] != num_classes:
+            print("Original Weights use different classes, discarding last layer")
+            state_dict.pop("classifier.3.weight")
+            state_dict.pop("classifier.3.bias")
         model.load_state_dict(state_dict, strict=False)
 
     model = model.cuda()
@@ -42,9 +49,11 @@ def load_checkpoint(checkpoint_path, best=False):
 def resume_model(model, checkpoint_path, best=False):
     checkpoint = load_checkpoint(checkpoint_path, best)
     if checkpoint is None:
-        print(f"=> no checkpoint found at {checkpoint_path}")
+        print(f"=> no model checkpoint found at {checkpoint_path}")
     else:
         model.load_state_dict(checkpoint['state_dict'])
+        if hasattr(model.encoder, 'codec'):
+            model.encoder.codec.entropy_bottleneck.update()
 
     return model
 
@@ -52,25 +61,27 @@ def resume_model(model, checkpoint_path, best=False):
 def resume_optimizer(optimizer, checkpoint_path, best=False):
     checkpoint = load_checkpoint(checkpoint_path, best)
     if checkpoint is None:
-        print(f"=> no checkpoint found at {checkpoint_path}")
+        print(f"=> no optimizer checkpoint found at {checkpoint_path}")
     else:
         optimizer.load_state_dict(checkpoint['optimizer'])
     return optimizer
 
 
 def resume_training_state(checkpoint_path, best=False):
-    metadata = {
+    summary = {
         'epoch': 0,
+        'best_discriminator': 100000,
+        'best_bytes': 100000,
         'best_top1': 0.0,
         'best_top1classes': 0.0,
     }
 
     checkpoint = load_checkpoint(checkpoint_path, best)
     if checkpoint is None:
-        print(f"=> no checkpoint found at {checkpoint_path}")
+        print(f"=> no summary checkpoint found at {checkpoint_path}")
     else:
-        metadata = checkpoint['metadata']
-    return metadata
+        summary = checkpoint['summary']
+    return summary
 
 
 #################################### Model Dicts ####################################
@@ -81,9 +92,12 @@ def get_model(base_model_config, model_config, num_classes=10):
         "regular": MobilenetV3Regular,
         "channel_bottleneck": MV3ChannelBottleneck,
         "entropy_bottleneck": MV3EntropyBottleneck,
+        "entropy_bottleneck2": MV3EntropyBottleneck2,
         "entropy_precompressor": MV3Precompressor,
     }
 
     model = model_dict[model_config['name']](**model_config, base_model=base_model).to('cuda')
+    if "checkpoint" in model_config:
+        model.load_state_dict(torch.load(model_config["checkpoint"])['state_dict'])
 
     return model

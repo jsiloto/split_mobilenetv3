@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from compressai.latent_codecs import EntropyBottleneckLatentCodec
 from compressai.entropy_models import EntropyBottleneck
@@ -11,37 +13,42 @@ from models.split.split_model import SplitModel
 
 class MV3EntropyBottleneck(SplitModel):
     def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float,
-                 split_position: int, compression_parameter=0.0, **kwargs):
+                 split_position: int, bottleneck_position: int, beta: float, **kwargs):
         super().__init__()
         self.base_model = base_model
         self.split_position = split_position
+        self.bottleneck_position = bottleneck_position
         self.num_classes = base_model.classifier[3].out_features
-        self.compression_parameter = compression_parameter
-        original_channels = base_model.cfgs[self.split_position][2]
-        encoder_layers = nn.Sequential(*list(base_model.features[:self.split_position]))
+        self.beta = beta
+        bottleneck_channels = base_model.cfgs[self.bottleneck_position-1][2]
+        original_channels = base_model.cfgs[self.split_position-1][2]
+        encoder_layers_pre = list(base_model.features[:self.bottleneck_position])
+        encoder_layers_post = list(base_model.features[self.bottleneck_position:self.split_position])
         decoder_layers = nn.Sequential(*list(base_model.features[self.split_position:]))
 
         print("Building MV3ChannelBottleneck with split position: ", self.split_position)
-        print("Original channels: ", original_channels)
-        print("Bottleneck channels: ", int(bottleneck_ratio * original_channels))
+        # print("Original channels: ", original_channels)
+        print("Bottleneck channels: ", bottleneck_channels)
 
-        self.encoder = MobileNetV3VanillaEncoder(encoder_layers,
-                                                 original_channels=original_channels,
-                                                 bottleneck_ratio=bottleneck_ratio)
+        self.encoder = MobileNetV3VanillaEncoder(layers_pre=encoder_layers_pre,
+                                                 layers_post=encoder_layers_post,
+                                                 bottleneck_channels=bottleneck_channels,
+                                                 bottleneck_ratio=bottleneck_ratio,
+                                                 beta=beta)
         self.decoder = MobileNetV3Decoder(layers=decoder_layers,
                                           conv=base_model.conv,
                                           avgpool=base_model.avgpool,
                                           classifier=base_model.classifier,
                                           original_channels=original_channels,
-                                          bottleneck_ratio=bottleneck_ratio)
+                                          bottleneck_ratio=-1)
 
 
     def forward(self, x):
         output = {}
-        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
+        pixels = x.shape[0]* x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x)
         output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
-        output['compression_loss'] = -self.compression_parameter * output['bpp']
+        output['compression_loss'] = -self.beta * output['bpp']
         output['y_hat'] = self.decoder(output['y_hat'])
 
         return output
@@ -54,25 +61,32 @@ class MV3EntropyBottleneck(SplitModel):
         return output
 
 class MobileNetV3VanillaEncoder(nn.Module):
-    def __init__(self, layers: nn.Sequential, original_channels: int, bottleneck_ratio: float):
+    def __init__(self, layers_pre: List, layers_post: List,
+                 bottleneck_channels: int, bottleneck_ratio: float,
+                 beta: float):
         super().__init__()
-        self.layers = layers
+        self.layers_pre = nn.Sequential(*layers_pre)
+        self.layers_post = nn.Sequential(*layers_post)
         self.bottleneck_ratio = bottleneck_ratio
-        self.original_channels = original_channels
-        self.bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
-        entropy_bottleneck =  EntropyBottleneck(self.bottleneck_channels,  filters=(8, 8, 8, 8))
+        self.bottleneck_channels = bottleneck_channels
+
+        # self.bottleneck_channels = int(self.bottleneck_ratio * self.bottleneck_channels)
+        entropy_bottleneck = EntropyBottleneck(self.bottleneck_channels,  filters=(8, 8, 8, 8))
         self.codec = EntropyBottleneckLatentCodec(entropy_bottleneck=entropy_bottleneck)
         self.codec.entropy_bottleneck.update()
+        self.beta = beta
 
     def forward(self, x, compress=False):
-        x = self.layers(x)
-        if self.bottleneck_channels > 0:
-            x[:, self.bottleneck_channels:, ::] = 0
-            x = x[:, :self.bottleneck_channels, ::]
+        pixels = x.shape[0]*x.shape[-1] * x.shape[-2] * x.shape[-3]
+        x = self.layers_pre(x)
 
         if compress:
             x = self.codec.compress(x)
         else:
             x = self.codec(x)
+            x['bpp'] = x['likelihoods']['y'].log2().sum() / pixels
+            x['compression_loss'] = -self.beta * x['bpp']
+
+        x['y_hat'] = self.layers_post(x['y_hat'])
 
         return x

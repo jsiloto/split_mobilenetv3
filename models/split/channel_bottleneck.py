@@ -13,7 +13,7 @@ class MV3ChannelBottleneck(SplitModel):
         self.base_model = base_model
         self.split_position = split_position
         self.num_classes = base_model.classifier[3].out_features
-        original_channels = base_model.cfgs[self.split_position][2]
+        original_channels = base_model.cfgs[self.split_position-2][2]
         encoder_layers = nn.Sequential(*list(base_model.features[:self.split_position]))
         decoder_layers = nn.Sequential(*list(base_model.features[self.split_position:]))
 
@@ -33,20 +33,12 @@ class MV3ChannelBottleneck(SplitModel):
 
 
     def forward(self, x):
-        output = {}
-        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         x = self.encoder(x)
-        output['num_bytes'] = x.shape[1]*x.shape[2]*x.shape[3]
-        output['y_hat'] = self.decoder(x)
-        output['bpp'] = output['num_bytes'] / pixels
-        output['compression_loss'] = 0.0
-        return output
+        x['y_hat'] = self.decoder(x['y_hat'])
+        return x
 
     def compress(self, x):
-        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
-        x = self.encoder(x)
-        output = {'num_bytes': x.shape[1]*x.shape[2]*x.shape[3]}
-        output['bpp'] = output['num_bytes'] / pixels
+        output = self.encoder(x)
         return output
 
 
@@ -59,12 +51,18 @@ class MobileNetV3VanillaEncoder(nn.Module):
         self.bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
 
     def forward(self, x):
+        pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         x = self.layers(x)
         if self.bottleneck_channels > 0:
             x[:, self.bottleneck_channels:, ::] = 0
             x = x[:, :self.bottleneck_channels, ::]
 
-        return x
+        output = {}
+        output['num_bytes'] = x.shape[1]*x.shape[2]*x.shape[3]
+        output['y_hat'] = x
+        output['bpp'] = output['num_bytes'] / pixels
+        output['compression_loss'] = torch.tensor(0.0)
+        return output
 
 
 class MobileNetV3Decoder(nn.Module):
@@ -81,7 +79,7 @@ class MobileNetV3Decoder(nn.Module):
     def forward(self, x):
         original_size = self.layers[0].conv[0].in_channels
         bottleneck_channels = int(self.bottleneck_ratio * self.original_channels)
-        if bottleneck_channels > 0 and self.bottleneck_ratio <= 1:
+        if bottleneck_channels > 0 and bottleneck_channels <= self.original_channels:
             device = x.get_device()
             if device < 0:
                 device = torch.device("cpu")
