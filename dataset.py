@@ -4,7 +4,8 @@ from math import ceil
 from torchvision.transforms import transforms
 from utils.jpeg import JPEGCompression
 from torchvision.datasets.stl10 import STL10
-from torchvision.datasets.oxford_iiit_pet import OxfordIIITPet
+# from torchvision.datasets.oxford_iiit_pet import OxfordIIITPet
+from datasets.oxford_iiit_pet import OxfordIIITPet
 
 
 class DatasetWrapper():
@@ -55,12 +56,14 @@ def get_dataset(dataset_config, batch_size, jpeg_quality=None, workers=8):
                             transform=get_transforms(split='test', jpeg_quality=jpeg_quality, input_size=input_shape))
 
 
-    elif dataset_name == "oxford_pets":
+    elif dataset_name == "pets":
         input_shape = (224, 224)
         num_classes = 37
-        train_dataset = OxfordIIITPet(root="./data/pets", download=True, split="trainval",
+        if "classes" in dataset_config:
+            classes = dataset_config["classes"]
+        train_dataset = OxfordIIITPet(root="./data/pets", download=True, split="trainval", classes=classes,
                                       transform=get_transforms(split='train', input_size=input_shape))
-        val_dataset = OxfordIIITPet(root="./data/pets", download=True, split="test",
+        val_dataset = OxfordIIITPet(root="./data/pets", download=True, split="test", classes=classes,
                                     transform=get_transforms(split='test', input_size=input_shape, jpeg_quality=jpeg_quality))
 
 

@@ -96,9 +96,9 @@ class STL10(VisionDataset):
             self.data = self.data[indices]
             self.labels = self.labels[indices]
             self.classes = classes
-        # print(f"Dataset Split: {self.split}")
-        # print(f"Existing Classes: {set(self.classes)}")
-        # print(f"Existing Labels: {set(self.labels)}")
+        print(f"Dataset Split: {self.split}")
+        print(f"Existing Classes: {set(self.classes)}")
+        print(f"Existing Labels: {set(self.labels)}")
 
     def _verify_folds(self, folds: Optional[int]) -> Optional[int]:
         if folds is None:
