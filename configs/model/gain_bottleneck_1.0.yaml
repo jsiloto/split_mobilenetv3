@@ -5,7 +5,7 @@ base_model: {
 }
 
 model: {
-  name: 'entropy_bottleneck',
+  name: 'gain_bottleneck',
   split_position: 7,
   bottleneck_position: 5,
   bottleneck_ratio: 1.0,

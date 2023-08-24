@@ -59,6 +59,7 @@ def get_dataset(dataset_config, batch_size, jpeg_quality=None, workers=8):
     elif dataset_name == "pets":
         input_shape = (224, 224)
         num_classes = 37
+        classes=None
         if "classes" in dataset_config:
             classes = dataset_config["classes"]
         train_dataset = OxfordIIITPet(root="./data/pets", download=True, split="trainval", classes=classes,

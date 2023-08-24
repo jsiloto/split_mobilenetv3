@@ -26,7 +26,7 @@ class MV3GainBottleneck(SplitModel):
         encoder_layers_post = list(base_model.features[self.bottleneck_position:self.split_position])
         decoder_layers = nn.Sequential(*list(base_model.features[self.split_position:]))
 
-        print("Building MV3ChannelBottleneck with split position: ", self.split_position)
+        print("Building MV3GainBottleneck with split position: ", self.split_position)
         # print("Original channels: ", original_channels)
         print("Bottleneck channels: ", bottleneck_channels)
 
@@ -47,7 +47,6 @@ class MV3GainBottleneck(SplitModel):
         output = {}
         pixels = x.shape[0]* x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x)
-        output['bpp'] = output['likelihoods']['y'].log2().sum() / pixels
         output['compression_loss'] = -self.beta * output['bpp']
         output['y_hat'] = self.decoder(output['y_hat'])
 
@@ -70,22 +69,36 @@ class MobileNetV3VanillaEncoder(nn.Module):
         self.bottleneck_ratio = bottleneck_ratio
         self.bottleneck_channels = bottleneck_channels
 
-        # self.bottleneck_channels = int(self.bottleneck_ratio * self.bottleneck_channels)
-        self.codec = GainHyperLatentCodec()
+        entropy_bottleneck = EntropyBottleneck(self.bottleneck_channels, filters=(8, 8, 8, 8))
+        self.codec = GainHyperLatentCodec(entropy_bottleneck=entropy_bottleneck)
         self.codec.entropy_bottleneck.update()
         self.beta = beta
+        num_betas=6
+        self.gain = torch.nn.init.uniform_(torch.randn(num_betas, self.bottleneck_channels, 1, 1)).to('cuda')
+        self.inv_gain = torch.nn.init.uniform_(torch.randn(num_betas, self.bottleneck_channels, 1, 1)).to('cuda')
+
+        # self.gain.requires_grad = False
+        # self.inv_gain.requires_grad = False
+
 
     def forward(self, x, compress=False):
         pixels = x.shape[0]*x.shape[-1] * x.shape[-2] * x.shape[-3]
         x = self.layers_pre(x)
 
-        if compress:
-            x = self.codec.compress(x)
+        betas = torch.linspace(0, 1.0, 6).to('cuda')
+        if self.training:
+            ratio = torch.randint(0, 6, (1,)).to('cuda')
         else:
-            x = self.codec(x)
-            x['bpp'] = x['likelihoods']['y'].log2().sum() / pixels
-            x['compression_loss'] = -self.beta * x['bpp']
+            ratio = 0
 
-        x['y_hat'] = self.layers_post(x['y_hat'])
+
+        if compress:
+            x = self.codec.compress(x, self.gain[0], self.inv_gain[0])
+        else:
+            x = self.codec(x, self.gain[ratio], self.inv_gain[ratio])
+            x['bpp'] = x['likelihoods']['z'].log2().sum() / pixels
+            x['compression_loss'] = -betas[ratio] * x['bpp']
+
+        x['y_hat'] = self.layers_post(x['params'])
 
         return x
