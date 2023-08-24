@@ -60,8 +60,6 @@ class LRAdjust:
 
 
 def train_classifier(configs):
-
-
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
     model = get_model(configs['model']['base_model'], configs['model']['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
@@ -212,9 +210,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
                      f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
 
-
     bar.finish()
-
     summary = {
         'train_loss': losses.avg,
         'train_closs': losses_c.avg,
