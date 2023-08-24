@@ -1,0 +1,2 @@
+name: "oxford_pets"
+classes: ['Sphynx', 'American Pit Bull Terrier', 'Siamese', 'Newfoundland', 'Leonberger', 'Maine Coon', 'Great Pyrenees', 'English Setter', 'Keeshond', 'Ragdoll', 'Pug', 'Scottish Terrier', 'Havanese', 'Staffordshire Bull Terrier', 'Basset Hound', 'Shiba Inu', 'Russian Blue', 'Pomeranian', 'Persian', 'Boxer', 'Beagle', 'Miniature Pinscher']

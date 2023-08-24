@@ -1,7 +1,6 @@
 base_model: {
   pretrained: True,
   width_mult: 1.0,
-  checkpoint: 'models/mobilenetv3/pretrained/mobilenetv3-large-stl10.pth'
 }
 
 model: {

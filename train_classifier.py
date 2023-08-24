@@ -26,7 +26,7 @@ from compressai_trainer.plot import plot_entropy_bottleneck_distributions
 def init_wandb(configs):
     if configs['wandb']:
         wandb.init(
-            project="concept_compression",
+            project=f"concept_compression_{configs['dataset']['name']}",
             config=configs,
             name=configs['project'] + "/" + configs['name'],
         )
@@ -60,7 +60,7 @@ class LRAdjust:
 
 
 def train_classifier(configs):
-    init_wandb(configs)
+
 
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
     model = get_model(configs['model']['base_model'], configs['model']['model'], num_classes=d.num_classes)
@@ -85,6 +85,8 @@ def train_classifier(configs):
     num_epochs = configs['hyper']['epochs']
     best_discriminator = summary['best_discriminator']
 
+    init_wandb(configs)
+
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
         train_summary = train(d.train_loader, d.train_loader_len, model, train_criterion, optimizer, adjuster, epoch)
@@ -101,10 +103,12 @@ def train_classifier(configs):
         is_best = best_discriminator > summary['val_discriminator']
 
         if is_best:
+            best_discriminator = summary['val_discriminator']
             summary['best_discriminator'] = summary['val_discriminator']
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
             summary['best_bytes'] = summary['val_bytes']
+            summary['best_bpp'] = summary['val_bpp']
         checkpoint_file = save_checkpoint({
             'summary': summary,
             'state_dict': model.state_dict(),
