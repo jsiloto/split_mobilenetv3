@@ -188,6 +188,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
             y_hat = model(input.to('cuda'))['y_hat']
         top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
+        print(compression_loss.item())
         losses_c.update(compression_loss.item(), input.size(0))
         top1meter.update(top1.item(), input.size(0))
         top5meter.update(top5.item(), input.size(0))
