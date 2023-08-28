@@ -1,5 +1,6 @@
 from typing import List
 
+import numpy as np
 import torch
 from compressai.latent_codecs import GainHyperLatentCodec
 from compressai.entropy_models import EntropyBottleneck
@@ -74,7 +75,9 @@ class MobileNetV3GainEncoder(nn.Module):
 
         self.gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
         self.inv_gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
-        self.betas = torch.linspace(0.1, max_beta,  self.num_betas).to('cuda')
+        self.gain_scale = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
+
+        self.betas = torch.linspace(0.0, max_beta,  self.num_betas).to('cuda')
         # self.gain.requires_grad = False
         # self.inv_gain.requires_grad = False
 
@@ -85,12 +88,19 @@ class MobileNetV3GainEncoder(nn.Module):
 
         if self.training:
             self.tier = torch.randint(0, self.num_betas, (1,)).to('cuda')
+            # p = np.array(list(range(self.num_betas, 0, -1)))
+            # p = p/p.sum()
+            # self.tier = np.random.choice(list(range(self.num_betas)), size=1, p=p)
 
 
         else:
             self.tier = tier
 
-        inv_gain = 1.0 / self.gain[self.tier]
+        inv_gain = 1 / self.gain[self.tier]
+        inv_gain = inv_gain * self.gain_scale[self.tier]
+        # self.gain_scale[self.tier]
+        # print(inv_gain.shape, self.gain_scale.shape, self.gain[self.tier].shape)
+        # inv_gain = self.inv_gain[self.tier]
 
         if compress:
             x = self.codec.compress(x, self.gain[self.tier], inv_gain)
