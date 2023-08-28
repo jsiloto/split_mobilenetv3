@@ -9,5 +9,6 @@ model: {
   split_position: 7,
   bottleneck_position: 5,
   bottleneck_ratio: 1.0,
-  beta: 0.0
+  num_betas: 6,
+  max_beta: 1.0,
 }
