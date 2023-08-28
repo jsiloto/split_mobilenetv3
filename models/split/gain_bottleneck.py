@@ -1,9 +1,10 @@
+import math
 from typing import List
 
 import numpy as np
 import torch
 from compressai.latent_codecs import GainHyperLatentCodec
-from compressai.entropy_models import EntropyBottleneck
+from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import GDN1
 from torch import nn
 
@@ -68,9 +69,8 @@ class MobileNetV3GainEncoder(nn.Module):
         self.bottleneck_channels = bottleneck_channels
         self.tier = 0
 
-        entropy_bottleneck = EntropyBottleneck(self.bottleneck_channels, filters=(8, 8, 8, 8))
+        entropy_bottleneck = GaussianConditional(None)
         self.codec = GainHyperLatentCodec(entropy_bottleneck=entropy_bottleneck)
-        self.codec.entropy_bottleneck.update()
         self.num_betas = num_betas
 
         self.gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
@@ -80,6 +80,17 @@ class MobileNetV3GainEncoder(nn.Module):
         self.betas = torch.linspace(0.0, max_beta,  self.num_betas).to('cuda')
         # self.gain.requires_grad = False
         # self.inv_gain.requires_grad = False
+
+        # From Balle's tensorflow compression examples
+        SCALES_MIN = 0.11
+        SCALES_MAX = 256
+        SCALES_LEVELS = 64
+
+        def get_scale_table(
+                min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS
+        ):  # pylint: disable=W0622
+            return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
+
 
     def forward(self, x, compress=False, tier=0):
         pixels = x.shape[0] * x.shape[-1] * x.shape[-2] * x.shape[-3]
