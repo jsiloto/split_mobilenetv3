@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Mapping
-
+import torch
+import math
 import torch.nn as nn
 from compressai.latent_codecs import LatentCodec, GaussianConditionalLatentCodec, GainHyperLatentCodec
 
@@ -16,6 +17,9 @@ def GaussianConditionalLatentCodecWrapper():
     entropy_parameters = nn.Conv2d(40, 80, 1, padding=0)
     # entropy_parameters = nn.Linear(20, 40)
     return GaussianConditionalLatentCodec(entropy_parameters=entropy_parameters)
+
+
+
 
 class GainHyperpriorLatentCodecFixed(LatentCodec):
     """Hyperprior codec constructed from latent codec for ``y`` that

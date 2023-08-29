@@ -60,6 +60,16 @@ class MV3GainBottleneck(SplitModel):
         return output
 
 
+# From Balle's tensorflow compression examples
+SCALES_MIN = 0.11
+SCALES_MAX = 256
+SCALES_LEVELS = 64
+
+
+def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):  # pylint: disable=W0622
+    return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
+
+
 class MobileNetV3GainEncoder(nn.Module):
     def __init__(self, layers_pre: List, layers_post: List,
                  bottleneck_channels: int, bottleneck_ratio: float, num_betas=6, max_beta=1.5, **kwargs):
@@ -70,33 +80,29 @@ class MobileNetV3GainEncoder(nn.Module):
         self.bottleneck_channels = bottleneck_channels
         self.tier = 0
 
-
         self.codec = GainHyperpriorLatentCodecFixed()
         self.num_betas = num_betas
+        self.betas = torch.tensor([0.001*(5**i) for i in range(num_betas)]).to('cuda')
+        self.num_betas = len(self.betas)
 
-        self.gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
-        self.z_gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
+        self.gain = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
+        self.z_gain = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
         # self.gain_scale = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
-
-        self.betas = torch.linspace(0.0, max_beta,  self.num_betas).to('cuda')
+        #
+        # self.betas = torch.linspace(0.05, max_beta, self.num_betas).to('cuda')
+        # self.betas = [0.001, 0.005, 0.01, 0.05, 0.1]
         # self.gain.requires_grad = False
         # self.inv_gain.requires_grad = False
+        self.update()
 
-        # From Balle's tensorflow compression examples
-        SCALES_MIN = 0.11
-        SCALES_MAX = 256
-        SCALES_LEVELS = 64
-
-        def get_scale_table(
-                min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS
-        ):  # pylint: disable=W0622
-            return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
-
+    def update(self):
+        self.codec.latent_codec['y'].gaussian_conditional.update_scale_table(get_scale_table())
+        self.codec.latent_codec['y'].gaussian_conditional.update()
+        self.codec.latent_codec['hyper'].entropy_bottleneck.update()
 
     def forward(self, x, compress=False, tier=0):
         pixels = x.shape[0] * x.shape[-1] * x.shape[-2] * x.shape[-3]
         x = self.layers_pre(x)
-
 
         if self.training:
             self.tier = torch.randint(0, self.num_betas, (1,)).to('cuda')
@@ -116,13 +122,11 @@ class MobileNetV3GainEncoder(nn.Module):
         # inv_gain = self.inv_gain[self.tier]
 
         if compress:
-            self.codec.latent_codec['y'].gaussian_conditional.update()
-
+            self.update()
             x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier], inv_gain, inv_z_gain)
         else:
             # print(self.z_gain[self.tier].shape, self.gain[self.tier].shape, inv_gain.shape, inv_z_gain.shape)
             # exit()
-
 
             x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier], inv_gain, inv_z_gain)
             x['bpp'] = (x['likelihoods']['y'].log2().sum() + x['likelihoods']['z'].log2().sum()) / pixels
