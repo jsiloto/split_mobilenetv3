@@ -3,11 +3,12 @@ from typing import List
 
 import numpy as np
 import torch
-from compressai.latent_codecs import GainHyperLatentCodec
+from compressai.latent_codecs import GainHyperLatentCodec, GainHyperpriorLatentCodec
 from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import GDN1
 from torch import nn
 
+from models.compression import GainHyperpriorLatentCodecFixed
 from models.mobilenetv3.mobilenetv3 import MobileNetV3
 from models.split.channel_bottleneck import MobileNetV3Decoder
 from models.split.split_model import SplitModel
@@ -69,13 +70,13 @@ class MobileNetV3GainEncoder(nn.Module):
         self.bottleneck_channels = bottleneck_channels
         self.tier = 0
 
-        entropy_bottleneck = GaussianConditional(None)
-        self.codec = GainHyperLatentCodec(entropy_bottleneck=entropy_bottleneck)
+
+        self.codec = GainHyperpriorLatentCodecFixed()
         self.num_betas = num_betas
 
         self.gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
-        self.inv_gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
-        self.gain_scale = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
+        self.z_gain = torch.nn.Parameter(torch.randn( self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
+        # self.gain_scale = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
 
         self.betas = torch.linspace(0.0, max_beta,  self.num_betas).to('cuda')
         # self.gain.requires_grad = False
@@ -108,20 +109,27 @@ class MobileNetV3GainEncoder(nn.Module):
             self.tier = tier
 
         inv_gain = 1 / self.gain[self.tier]
-        inv_gain = inv_gain * self.gain_scale[self.tier]
+        inv_z_gain = 1 / self.gain[self.tier]
+        # inv_gain = inv_gain * self.gain_scale[self.tier]
         # self.gain_scale[self.tier]
         # print(inv_gain.shape, self.gain_scale.shape, self.gain[self.tier].shape)
         # inv_gain = self.inv_gain[self.tier]
 
         if compress:
-            x = self.codec.compress(x, self.gain[self.tier], inv_gain)
+            self.codec.latent_codec['y'].gaussian_conditional.update()
+
+            x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier], inv_gain, inv_z_gain)
         else:
-            x = self.codec(x, self.gain[self.tier], inv_gain)
-            x['bpp'] = x['likelihoods']['z'].log2().sum() / pixels
+            # print(self.z_gain[self.tier].shape, self.gain[self.tier].shape, inv_gain.shape, inv_z_gain.shape)
+            # exit()
+
+
+            x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier], inv_gain, inv_z_gain)
+            x['bpp'] = (x['likelihoods']['y'].log2().sum() + x['likelihoods']['z'].log2().sum()) / pixels
             x['compression_loss'] = -self.betas[self.tier].item() * x['bpp']
             # print(x['bpp'], self.tier, x['compression_loss'])
             # print(x['compression_loss'])
 
-        x['y_hat'] = self.layers_post(x['params'])
+        x['y_hat'] = self.layers_post(x['y_hat'])
 
         return x
