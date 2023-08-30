@@ -83,7 +83,7 @@ class MobileNetV3GainEncoder(nn.Module):
 
         self.codec = GainHyperpriorLatentCodecFixed()
         self.num_betas = num_betas
-        self.betas = torch.tensor([0.001*(5**i) for i in range(num_betas)]).to('cuda')
+        self.betas = torch.tensor([0.002*(6**i) for i in range(num_betas)]).to('cuda')
         self.num_betas = len(self.betas)
 
         self.gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
