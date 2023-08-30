@@ -56,7 +56,7 @@ class MV3GainBottleneck(SplitModel):
         pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x, compress=True, tier=tier)
         output['num_bytes'] = sum([len(s) for s in output['strings'][0]]) / len(output['strings'][0])
-        output['num_bytes'] += sum([len(s) for s in output['strings'][1]]) / len(output['strings'][1])
+        # output['num_bytes'] += sum([len(s) for s in output['strings'][1]]) / len(output['strings'][1])
         output['bpp'] = output['num_bytes'] / pixels
         return output
 
@@ -81,9 +81,10 @@ class MobileNetV3GainEncoder(nn.Module):
         self.bottleneck_channels = bottleneck_channels
         self.tier = 0
 
-        self.codec = GainHyperpriorLatentCodecFixed()
+        entropy_bottleneck = EntropyBottleneck(bottleneck_channels)
+        self.codec = GainHyperLatentCodec(entropy_bottleneck=entropy_bottleneck)
         self.num_betas = num_betas
-        self.betas = torch.tensor([0.002*(6**i) for i in range(num_betas)]).to('cuda')
+        self.betas = torch.tensor([0.04*(4**i) for i in range(num_betas)]).to('cuda')
         self.num_betas = len(self.betas)
 
         self.gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
@@ -91,10 +92,10 @@ class MobileNetV3GainEncoder(nn.Module):
         self.z_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
                                        requires_grad=True)
 
-        self.inv_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
-                                       requires_grad=True)
-        self.inv_z_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
-                                       requires_grad=True)
+        # self.inv_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
+        #                                requires_grad=True)
+        # self.inv_z_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
+        #                                requires_grad=True)
 
         # self.gain_scale = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
         #
@@ -105,9 +106,10 @@ class MobileNetV3GainEncoder(nn.Module):
         self.update()
 
     def update(self):
-        self.codec.latent_codec['y'].gaussian_conditional.update_scale_table(get_scale_table())
-        self.codec.latent_codec['y'].gaussian_conditional.update()
-        self.codec.latent_codec['hyper'].entropy_bottleneck.update()
+        # self.codec.latent_codec['y'].gaussian_conditional.update_scale_table(get_scale_table())
+        # self.codec.latent_codec['y'].gaussian_conditional.update()
+        # self.codec.latent_codec['hyper'].entropy_bottleneck.update()
+        self.codec.entropy_bottleneck.update()
 
     def forward(self, x, compress=False, tier=0):
         pixels = x.shape[0] * x.shape[-1] * x.shape[-2] * x.shape[-3]
@@ -132,19 +134,17 @@ class MobileNetV3GainEncoder(nn.Module):
 
         if compress:
             self.update()
-            x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier],
-                                    self.inv_gain[self.tier], self.inv_z_gain[self.tier])
+            x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier])
         else:
             # print(self.z_gain[self.tier].shape, self.gain[self.tier].shape, inv_gain.shape, inv_z_gain.shape)
             # exit()
 
-            x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier],
-                                    self.inv_gain[self.tier], self.inv_z_gain[self.tier])
-            x['bpp'] = (x['likelihoods']['y'].log2().sum() + x['likelihoods']['z'].log2().sum()) / pixels
+            x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier])
+            x['bpp'] = x['likelihoods']['z'].log2().sum() / pixels
             x['compression_loss'] = -self.betas[self.tier].item() * x['bpp']
             # print(x['bpp'], self.tier, x['compression_loss'])
             # print(x['compression_loss'])
 
-        x['y_hat'] = self.layers_post(x['y_hat'])
+        x['y_hat'] = self.layers_post(x['params'])
 
         return x
