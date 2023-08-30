@@ -56,6 +56,7 @@ class MV3GainBottleneck(SplitModel):
         pixels = x.shape[-1] * x.shape[-2] * x.shape[-3]
         output = self.encoder(x, compress=True, tier=tier)
         output['num_bytes'] = sum([len(s) for s in output['strings'][0]]) / len(output['strings'][0])
+        output['num_bytes'] += sum([len(s) for s in output['strings'][1]]) / len(output['strings'][1])
         output['bpp'] = output['num_bytes'] / pixels
         return output
 
@@ -85,8 +86,16 @@ class MobileNetV3GainEncoder(nn.Module):
         self.betas = torch.tensor([0.001*(5**i) for i in range(num_betas)]).to('cuda')
         self.num_betas = len(self.betas)
 
-        self.gain = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
-        self.z_gain = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
+        self.gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
+                                       requires_grad=True)
+        self.z_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
+                                       requires_grad=True)
+
+        self.inv_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
+                                       requires_grad=True)
+        self.inv_z_gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
+                                       requires_grad=True)
+
         # self.gain_scale = torch.nn.Parameter(torch.randn(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'))
         #
         # self.betas = torch.linspace(0.05, max_beta, self.num_betas).to('cuda')
@@ -123,12 +132,14 @@ class MobileNetV3GainEncoder(nn.Module):
 
         if compress:
             self.update()
-            x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier], inv_gain, inv_z_gain)
+            x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier],
+                                    self.inv_gain[self.tier], self.inv_z_gain[self.tier])
         else:
             # print(self.z_gain[self.tier].shape, self.gain[self.tier].shape, inv_gain.shape, inv_z_gain.shape)
             # exit()
 
-            x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier], inv_gain, inv_z_gain)
+            x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier],
+                                    self.inv_gain[self.tier], self.inv_z_gain[self.tier])
             x['bpp'] = (x['likelihoods']['y'].log2().sum() + x['likelihoods']['z'].log2().sum()) / pixels
             x['compression_loss'] = -self.betas[self.tier].item() * x['bpp']
             # print(x['bpp'], self.tier, x['compression_loss'])

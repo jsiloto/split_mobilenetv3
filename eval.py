@@ -11,7 +11,7 @@ from configs import get_config_from_args
 from dataset import get_dataset
 from distill_classifier import distill_classifier
 from eval_classifier import validate
-from models.models import get_model, resume_model
+from models.models import get_model, resume_model, resume_training_state
 from train_classifier import train_classifier
 from utils import mkdir_p
 
@@ -32,6 +32,8 @@ def main():
     # optionally resume from a checkpoint
     checkpoint_path = configs['checkpoint']
     model = resume_model(model, checkpoint_path, best=False)
+    summary = resume_training_state(checkpoint_path, best=False)
+    print("Resuming from epoch", summary['epoch'])
 
     for tier in range(len(model.encoder.betas)):
         val_summary = validate(d.val_loader, d.val_loader_len, model, val_criterion, tier=tier)

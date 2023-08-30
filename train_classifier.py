@@ -56,6 +56,8 @@ class LRAdjust:
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
+        return epoch < warmup_epoch
+
 
 
 
@@ -170,7 +172,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
 
     end = time.time()
-    adjuster.adjust(optimizer, epoch, 0, train_loader_len)
+    warmup = adjuster.adjust(optimizer, epoch, 0, train_loader_len)
     for i, (input, target) in enumerate(train_loader):
         # measure data loading time
         # a = student.compress(input.to('cuda'))
@@ -194,7 +196,8 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
         top5meter.update(top5.item(), input.size(0))
 
         # compute gradient and do SGD step
-        loss += compression_loss
+        if not warmup:
+            loss += compression_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
