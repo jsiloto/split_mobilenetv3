@@ -87,6 +87,7 @@ def train_classifier(configs):
 
     init_wandb(configs)
 
+
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
         train_summary = train(d.train_loader, d.train_loader_len, model, train_criterion, optimizer, adjuster, epoch)
@@ -134,13 +135,13 @@ def train_classifier(configs):
     print(final_summary['val_top1'])
     print("Best Classes Accuracy")
     print(final_summary['val_top1classes'])
-    checkpoint_file = save_checkpoint({
-        'summary': final_summary,
-        'state_dict': model.state_dict(),
-        'optimizer': optimizer.state_dict(),
-    }, True, checkpoint=checkpoint_path)
+    # checkpoint_file = save_checkpoint({
+    #     'summary': final_summary,
+    #     'state_dict': model.state_dict(),
+    #     'optimizer': optimizer.state_dict(),
+    # }, True, checkpoint=checkpoint_path)
     if configs['wandb']:
-        wandb.save(checkpoint_file)
+        wandb.save(os.path.join(checkpoint_path, 'model_best.pth.tar'))
 
     print(final_summary)
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:

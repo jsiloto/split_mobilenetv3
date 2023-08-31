@@ -84,7 +84,8 @@ class MobileNetV3GainEncoder(nn.Module):
         entropy_bottleneck = EntropyBottleneck(bottleneck_channels)
         self.codec = GainHyperLatentCodec(entropy_bottleneck=entropy_bottleneck)
         self.num_betas = num_betas
-        self.betas = torch.tensor([0.04*(4**i) for i in range(num_betas)]).to('cuda')
+        self.betas = torch.Tensor([0.25, 0.5, 0.75, 1.0]).to('cuda')
+        # self.betas = torch.tensor([0.04*(4**i) for i in range(num_betas)]).to('cuda')
         self.num_betas = len(self.betas)
 
         self.gain = torch.nn.Parameter(torch.ones(self.num_betas, self.bottleneck_channels, 1, 1).to('cuda'),
@@ -116,7 +117,11 @@ class MobileNetV3GainEncoder(nn.Module):
         x = self.layers_pre(x)
 
         if self.training:
-            self.tier = torch.randint(0, self.num_betas, (1,)).to('cuda')
+            tiers = list(range(0, self.num_betas)) + [0]
+            self.tier = np.random.choice(tiers, size=1, replace=False)
+            #
+            #
+            # self.tier = torch.randint(0, self.num_betas, (1,)).to('cuda')
             # p = np.array(list(range(self.num_betas, 0, -1)))
             # p = p/p.sum()
             # self.tier = np.random.choice(list(range(self.num_betas)), size=1, p=p)
