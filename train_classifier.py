@@ -86,7 +86,8 @@ def train_classifier(configs):
     best_discriminator = summary['best_discriminator']
 
     init_wandb(configs)
-
+    total_steps = num_epochs*3674//configs['hyper']['batch_size']
+    num_epochs = total_steps//d.train_loader_len
 
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))

@@ -16,7 +16,7 @@ from models.split.split_model import SplitModel
 
 class MV3GainBottleneck(SplitModel):
     def __init__(self, base_model: MobileNetV3, bottleneck_ratio: float,
-                 split_position: int, bottleneck_position: int, num_betas=6, max_beta=1.5, **kwargs):
+                 split_position: int, bottleneck_position: int, **kwargs):
         super().__init__()
         self.base_model = base_model
         self.split_position = split_position
@@ -35,8 +35,7 @@ class MV3GainBottleneck(SplitModel):
         self.encoder = MobileNetV3GainEncoder(layers_pre=encoder_layers_pre,
                                               layers_post=encoder_layers_post,
                                               bottleneck_channels=bottleneck_channels,
-                                              bottleneck_ratio=bottleneck_ratio,
-                                              num_betas=num_betas, max_beta=max_beta)
+                                              bottleneck_ratio=bottleneck_ratio, **kwargs)
         self.decoder = MobileNetV3Decoder(layers=decoder_layers,
                                           conv=base_model.conv,
                                           avgpool=base_model.avgpool,
@@ -73,7 +72,7 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):  # py
 
 class MobileNetV3GainEncoder(nn.Module):
     def __init__(self, layers_pre: List, layers_post: List,
-                 bottleneck_channels: int, bottleneck_ratio: float, num_betas=6, max_beta=1.5, **kwargs):
+                 bottleneck_channels: int, bottleneck_ratio: float, betas, **kwargs):
         super().__init__()
         self.layers_pre = nn.Sequential(*layers_pre)
         self.layers_post = nn.Sequential(*layers_post)
@@ -83,8 +82,8 @@ class MobileNetV3GainEncoder(nn.Module):
 
         entropy_bottleneck = EntropyBottleneck(bottleneck_channels)
         self.codec = GainHyperLatentCodec(entropy_bottleneck=entropy_bottleneck)
-        self.num_betas = num_betas
-        self.betas = torch.Tensor([0.25, 0.5, 0.75, 1.0]).to('cuda')
+        # self.num_betas = num_betas
+        self.betas = torch.Tensor(betas).to('cuda')
         # self.betas = torch.tensor([0.04*(4**i) for i in range(num_betas)]).to('cuda')
         self.num_betas = len(self.betas)
 

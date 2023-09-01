@@ -1,5 +1,4 @@
 lr: 0.001
-epochs: 250
-batch_size: 128
+epochs: 225
+batch_size: 120
 warmup: True
-
