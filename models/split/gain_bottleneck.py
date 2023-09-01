@@ -117,7 +117,7 @@ class MobileNetV3GainEncoder(nn.Module):
 
         if self.training:
             tiers = list(range(0, self.num_betas)) + [0]
-            self.tier = np.random.choice(tiers, size=1, replace=False)
+            self.tier = np.random.choice(tiers, size=1, replace=False)[0]
 
             #
             #
@@ -129,6 +129,7 @@ class MobileNetV3GainEncoder(nn.Module):
 
         else:
             self.tier = tier
+
 
         s = round(self.tier)
         l = self.tier - s

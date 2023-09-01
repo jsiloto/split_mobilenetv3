@@ -37,8 +37,13 @@ def main():
     print("Resuming from epoch", summary['epoch'])
 
     # for tier in range(len(model.encoder.betas)):
-    for tier in np.linspace(0, len(model.encoder.betas)-1, 10):
+    top_summary = {}
+    for tier in np.linspace(0, len(model.encoder.betas)-1, len(model.encoder.betas)*3):
         val_summary = validate(d.val_loader, d.val_loader_len, model, val_criterion, tier=tier)
+        top_summary[tier] = val_summary
+
+    with open(os.path.join(configs['checkpoint'], 'eval_summary.json'), "w") as f:
+        json.dump(top_summary, f)
 
 
 if __name__ == '__main__':
