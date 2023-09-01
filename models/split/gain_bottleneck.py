@@ -118,6 +118,7 @@ class MobileNetV3GainEncoder(nn.Module):
         if self.training:
             tiers = list(range(0, self.num_betas)) + [0]
             self.tier = np.random.choice(tiers, size=1, replace=False)
+
             #
             #
             # self.tier = torch.randint(0, self.num_betas, (1,)).to('cuda')
@@ -129,8 +130,17 @@ class MobileNetV3GainEncoder(nn.Module):
         else:
             self.tier = tier
 
-        inv_gain = 1 / self.gain[self.tier]
-        inv_z_gain = 1 / self.gain[self.tier]
+        s = round(self.tier)
+        l = self.tier - s
+        if s >= self.num_betas - 1:
+            interp_gain = self.gain[s]
+            interp_inv_gain = self.z_gain[s]
+        else:
+            interp_gain = (torch.abs(self.gain[s]).pow(1 - l)
+                           * torch.abs(self.gain[s + 1]).pow(l))
+
+            interp_inv_gain = (torch.abs(self.z_gain[s]).pow(1 - l)
+                               * torch.abs(self.z_gain[s + 1]).pow(l))
         # inv_gain = inv_gain * self.gain_scale[self.tier]
         # self.gain_scale[self.tier]
         # print(inv_gain.shape, self.gain_scale.shape, self.gain[self.tier].shape)
@@ -138,14 +148,14 @@ class MobileNetV3GainEncoder(nn.Module):
 
         if compress:
             self.update()
-            x = self.codec.compress(x, self.gain[self.tier], self.z_gain[self.tier])
+            x = self.codec.compress(x, interp_gain, interp_inv_gain)
         else:
             # print(self.z_gain[self.tier].shape, self.gain[self.tier].shape, inv_gain.shape, inv_z_gain.shape)
             # exit()
 
-            x = self.codec(x, self.gain[self.tier], self.z_gain[self.tier])
+            x = self.codec(x, interp_gain, interp_inv_gain)
             x['bpp'] = x['likelihoods']['z'].log2().sum() / pixels
-            x['compression_loss'] = -self.betas[self.tier].item() * x['bpp']
+            x['compression_loss'] = -self.betas[s].item() * x['bpp']
             # print(x['bpp'], self.tier, x['compression_loss'])
             # print(x['compression_loss'])
 

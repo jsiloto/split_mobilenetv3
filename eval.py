@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 
+import numpy as np
 import torch
 import yaml
 from torch import nn
@@ -35,7 +36,8 @@ def main():
     summary = resume_training_state(checkpoint_path, best=False)
     print("Resuming from epoch", summary['epoch'])
 
-    for tier in range(len(model.encoder.betas)):
+    # for tier in range(len(model.encoder.betas)):
+    for tier in np.linspace(0, len(model.encoder.betas)-1, 10):
         val_summary = validate(d.val_loader, d.val_loader_len, model, val_criterion, tier=tier)
 
 
