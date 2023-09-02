@@ -1,0 +1,15 @@
+base_model: {
+  pretrained: True,
+  width_mult: 1.0,
+  checkpoint: 'models/mobilenetv3/pretrained/mobilenetv3-large-stl10.pth'
+}
+
+model: {
+  name: 'gain_bottleneck',
+  split_position: 7,
+  bottleneck_position: 5,
+  bottleneck_ratio: 1.0,
+  num_betas: 4,
+  max_beta: 0.3,
+  betas: [0.275, 0.55, 0.825, 1.1]
+}

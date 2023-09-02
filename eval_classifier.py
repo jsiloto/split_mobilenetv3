@@ -11,7 +11,7 @@ from models.models import get_model, resume_model
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
 
 
-def validate(val_loader, val_loader_len, model, criterion, title='Val'):
+def validate(val_loader, val_loader_len, model, criterion, title='Val', tier=None):
     num_classes = model.num_classes
     bar = Bar(title, max=val_loader_len)
 
@@ -26,6 +26,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
 
     end = time.time()
     class_prec = [AverageMeter() for i in range(num_classes)]
+    print(f"Validating tier {tier}")
     with torch.no_grad():
         for i, (input, target) in enumerate(val_loader):
             # measure data loading time
@@ -33,7 +34,10 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
             target = target.cuda(non_blocking=True)
 
             # compute output
-            output = model(input.to('cuda'))
+            if tier is not None:
+                output = model(input.to('cuda'), tier=tier)
+            else:
+                output = model(input.to('cuda'))
             y_hat = output['y_hat']
             loss = criterion(y_hat, target)
 
@@ -63,7 +67,10 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
         if hasattr(model, 'encoder'):
             if hasattr(model.encoder, 'codec'):
                 model.encoder.codec.entropy_bottleneck.update(force=True)
-        output = model.compress(input.to('cuda'))
+        if tier is not None:
+            output = model.compress(input.to('cuda'), tier=tier)
+        else:
+            output = model.compress(input.to('cuda'))
         bpp = output['bpp']
         num_bytes = output['num_bytes']
         bar.suffix = f'({i + 1}/{val_loader_len}) ' \
@@ -82,7 +89,7 @@ def validate(val_loader, val_loader_len, model, criterion, title='Val'):
         'val_top1classes': top1classes,
         'val_loss': losses.avg,
         'val_bpp': bpp,
-        'val_discriminator': num_bytes/losses.avg,
+        'val_discriminator': num_bytes*losses.avg,
     }
 
     return summary

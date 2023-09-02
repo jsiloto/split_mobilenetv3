@@ -26,7 +26,7 @@ from compressai_trainer.plot import plot_entropy_bottleneck_distributions
 def init_wandb(configs):
     if configs['wandb']:
         wandb.init(
-            project="concept_compression",
+            project=f"concept_compression_{configs['dataset']['name']}",
             config=configs,
             name=configs['project'] + "/" + configs['name'],
         )
@@ -56,12 +56,12 @@ class LRAdjust:
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
+        return epoch < warmup_epoch
+
 
 
 
 def train_classifier(configs):
-    init_wandb(configs)
-
     d = get_dataset(configs['dataset'], configs['hyper']['batch_size'])
     model = get_model(configs['model']['base_model'], configs['model']['model'], num_classes=d.num_classes)
     # define loss function (criterion) and optimizer
@@ -85,6 +85,10 @@ def train_classifier(configs):
     num_epochs = configs['hyper']['epochs']
     best_discriminator = summary['best_discriminator']
 
+    init_wandb(configs)
+    total_steps = num_epochs*3674//configs['hyper']['batch_size']
+    num_epochs = total_steps//d.train_loader_len
+
     for epoch in range(start_epoch, num_epochs):
         print('\nEpoch: [%d | %d]' % (epoch + 1, num_epochs))
         train_summary = train(d.train_loader, d.train_loader_len, model, train_criterion, optimizer, adjuster, epoch)
@@ -101,10 +105,12 @@ def train_classifier(configs):
         is_best = best_discriminator > summary['val_discriminator']
 
         if is_best:
+            best_discriminator = summary['val_discriminator']
             summary['best_discriminator'] = summary['val_discriminator']
             summary['best_top1'] = summary['val_top1']
             summary['best_top1classes'] = summary['val_top1classes']
             summary['best_bytes'] = summary['val_bytes']
+            summary['best_bpp'] = summary['val_bpp']
         checkpoint_file = save_checkpoint({
             'summary': summary,
             'state_dict': model.state_dict(),
@@ -130,13 +136,13 @@ def train_classifier(configs):
     print(final_summary['val_top1'])
     print("Best Classes Accuracy")
     print(final_summary['val_top1classes'])
-    checkpoint_file = save_checkpoint({
-        'summary': final_summary,
-        'state_dict': model.state_dict(),
-        'optimizer': optimizer.state_dict(),
-    }, True, checkpoint=checkpoint_path)
+    # checkpoint_file = save_checkpoint({
+    #     'summary': final_summary,
+    #     'state_dict': model.state_dict(),
+    #     'optimizer': optimizer.state_dict(),
+    # }, True, checkpoint=checkpoint_path)
     if configs['wandb']:
-        wandb.save(checkpoint_file)
+        wandb.save(os.path.join(checkpoint_path, 'model_best.pth.tar'))
 
     print(final_summary)
     with open(os.path.join(checkpoint_path, 'metadata.json'), "w") as f:
@@ -168,7 +174,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
 
 
     end = time.time()
-    adjuster.adjust(optimizer, epoch, 0, train_loader_len)
+    warmup = adjuster.adjust(optimizer, epoch, 0, train_loader_len)
     for i, (input, target) in enumerate(train_loader):
         # measure data loading time
         # a = student.compress(input.to('cuda'))
@@ -186,12 +192,14 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
             y_hat = model(input.to('cuda'))['y_hat']
         top1, top5 = accuracy(y_hat, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
+        # print(compression_loss)
         losses_c.update(compression_loss.item(), input.size(0))
         top1meter.update(top1.item(), input.size(0))
         top5meter.update(top5.item(), input.size(0))
 
         # compute gradient and do SGD step
-        loss += compression_loss
+        if not warmup:
+            loss += compression_loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -208,9 +216,7 @@ def train(train_loader, train_loader_len, model, criterion, optimizer, adjuster,
                      f'top1: {top1meter.avg: .2f} | top5: {top5meter.avg: .2f}'
         bar.next()
 
-
     bar.finish()
-
     summary = {
         'train_loss': losses.avg,
         'train_closs': losses_c.avg,

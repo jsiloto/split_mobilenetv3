@@ -93,16 +93,7 @@ class OxfordIIITPet(VisionDataset):
             self._images = [self._images[i] for i in indices]
             self._labels =  [self._labels[i] for i in indices]
             self.classes = classes
-        # print("classes", classes)
-        # if classes is not None:
-        #     existing_labels = [self.classes.index(c) for c in classes]
-        #     indices = [i for i in range(len(self.labels)) if self.labels[i] in existing_labels]
-        #     self.data = self.data[indices]
-        #     self.labels = self.labels[indices]
-        #     self.classes = classes
-        # print(f"Dataset Split: {self.split}")
-        # print(f"Existing Classes: {set(self.classes)}")
-        # print(f"Existing Labels: {set(self._labels)}")
+        print("classes", classes)
 
 
     def __len__(self) -> int:

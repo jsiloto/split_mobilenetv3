@@ -8,6 +8,7 @@ from models.split.channel_bottleneck import MV3ChannelBottleneck
 from models.split.entropy_bottleneck import MV3EntropyBottleneck
 from models.split.entropy_bottleneck2 import MV3EntropyBottleneck2
 from models.split.entropy_precompressor import MV3Precompressor
+from models.split.gain_bottleneck import MV3GainBottleneck
 from models.split.regular import MobilenetV3Regular
 from utils import mkdir_p
 
@@ -93,6 +94,7 @@ def get_model(base_model_config, model_config, num_classes=10):
         "channel_bottleneck": MV3ChannelBottleneck,
         "entropy_bottleneck": MV3EntropyBottleneck,
         "entropy_bottleneck2": MV3EntropyBottleneck2,
+        "gain_bottleneck": MV3GainBottleneck,
         "entropy_precompressor": MV3Precompressor,
     }
 

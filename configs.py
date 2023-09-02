@@ -30,8 +30,11 @@ def parse_config(args):
 
     config_name = ".".join(args.dataset.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.student.split("/")[-1].split(".")[0:-1]) + "_" \
-                  + ".".join(args.hyper.split("/")[-1].split(".")[0:-1]) + "_" \
-                   "beta" + str(config['model']['model']['beta'])
+                  + ".".join(args.hyper.split("/")[-1].split(".")[0:-1])
+
+    if "beta" in config['model']['model']:
+        config_name += "_beta" + str(config['model']['model']['beta'])
+
 
     config['name'] = config_name
     config['project'] = args.project

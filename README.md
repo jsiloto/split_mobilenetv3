@@ -17,6 +17,6 @@ https://drive.google.com/file/d/1wnBBQYG21b_rvGlmDi9kboTxcDlbRV2K/view?usp=shari
 
 Run Training and Latency Benchmarks
 ```bash
-python train.py --dataset oxford_pets --model configs/model/split.yaml
-python latency_benchmark.py --model configs/model/split.yaml --dataset oxford_pets
+python train.py --model configs/model/gain_bottleneck_1.0.yaml --clean --dataset configs/dataset/pets.yaml  --project test --wandb
+while true; do python eval.py --model configs/model/gain_bottleneck_1.0.yaml --dataset configs/dataset/pets.yaml  --project test; done
 ```
