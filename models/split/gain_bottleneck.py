@@ -116,16 +116,9 @@ class MobileNetV3GainEncoder(nn.Module):
         x = self.layers_pre(x)
 
         if self.training:
-            tiers = list(range(0, self.num_betas)) + [0]
-            self.tier = np.random.choice(tiers, size=1, replace=False)[0]
-
-            #
-            #
-            # self.tier = torch.randint(0, self.num_betas, (1,)).to('cuda')
-            # p = np.array(list(range(self.num_betas, 0, -1)))
-            # p = p/p.sum()
-            # self.tier = np.random.choice(list(range(self.num_betas)), size=1, p=p)
-
+            # tiers = list(range(0, self.num_betas)) + [0]
+            # self.tier = np.random.choice(tiers, size=1, replace=False)[0]
+            self.tier = np.random.uniform(0, self.num_betas-1, 1)[0]
 
         else:
             self.tier = tier

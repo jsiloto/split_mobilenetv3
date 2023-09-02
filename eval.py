@@ -38,7 +38,7 @@ def main():
 
     # for tier in range(len(model.encoder.betas)):
     top_summary = {}
-    for tier in np.linspace(0, len(model.encoder.betas)-1, len(model.encoder.betas)*3):
+    for tier in np.linspace(0, len(model.encoder.betas)-1, len(model.encoder.betas)*5):
         val_summary = validate(d.val_loader, d.val_loader_len, model, val_criterion, tier=tier)
         top_summary[tier] = val_summary
 
