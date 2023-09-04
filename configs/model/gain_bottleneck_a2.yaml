@@ -11,5 +11,5 @@ model: {
   bottleneck_ratio: 1.0,
   num_betas: 4,
   max_beta: 0.3,
-  betas: [0.275, 0.55, 0.825, 1.1]
+  betas: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 }
