@@ -27,6 +27,7 @@ def parse_config(args):
     config['teacher'] = load_config(args.teacher)
     config['dataset'] = load_config(args.dataset)
     config['hyper'] = load_config(args.hyper)
+    config['type'] = args.type
 
     config_name = ".".join(args.dataset.split("/")[-1].split(".")[0:-1]) + "_" \
                   + ".".join(args.student.split("/")[-1].split(".")[0:-1]) + "_" \
@@ -67,6 +68,7 @@ def add_config_args(parser: argparse.ArgumentParser):
                         help='checkpoint teacher path')
     parser.add_argument('--clean', action='store_true', help='clean checkpoint folder')
     parser.add_argument('--wandb', action='store_true', help='use wandb')
+    parser.add_argument('--type', default='supervised', type=str, help='supervised/distillation/compression')
 
 def get_config_from_args(parser: argparse.ArgumentParser):
     add_config_args(parser)

@@ -3,6 +3,7 @@ import os
 import torch
 from torch import nn
 
+from models.lic.gain_compressor import GainCompressor
 from models.mobilenetv3.mobilenetv3 import MobileNetV3, mobilenetv3_large
 from models.split.channel_bottleneck import MV3ChannelBottleneck
 from models.split.entropy_bottleneck import MV3EntropyBottleneck
@@ -96,6 +97,7 @@ def get_model(base_model_config, model_config, num_classes=10):
         "entropy_bottleneck2": MV3EntropyBottleneck2,
         "gain_bottleneck": MV3GainBottleneck,
         "entropy_precompressor": MV3Precompressor,
+        "gain_compressor": GainCompressor,
     }
 
     model = model_dict[model_config['name']](**model_config, base_model=base_model).to('cuda')

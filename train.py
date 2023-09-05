@@ -8,6 +8,7 @@ import yaml
 from configs import get_config_from_args
 from distill_classifier import distill_classifier
 from train_classifier import train_classifier
+from train_compressor import train_compressor
 from utils import mkdir_p
 
 def main():
@@ -18,10 +19,14 @@ def main():
 
     print(configs)
 
-    if configs['teacher'] is None:
+    if configs['type'] == 'supervised':
         train_classifier(configs)
-    else:
+    elif configs['type'] == 'distillation':
         distill_classifier(configs)
+    elif configs['type'] == 'compression':
+        train_compressor(configs)
+    else:
+        raise ValueError("Unknown training type: ", configs['type'])
 
 if __name__ == '__main__':
     main()
